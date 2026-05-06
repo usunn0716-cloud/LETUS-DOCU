@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LETUS 서류 통합 관리 플랫폼</title>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        letus: {
+                            black: "#1A1A1A",
+                            orange: "#FF6F43",
+                            white: "#FFFFFF",
+                            charcoal: "#374151",
+                            light: "#FFF5F2",
+                        },
+                        border: "#e2e8f0",
+                        input: "#e2e8f0",
+                        ring: "#FF6F43",
+                        background: "#ffffff",
+                        foreground: "#020817",
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Pretendard Font -->
+    <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+
+    <style>
+        body {
+            font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+        }
+
+        @keyframes scan {
+            0% {
+                top: 0;
+                opacity: 0;
+            }
+
+            50% {
+                opacity: 1;
+            }
+
+            100% {
+                top: 100%;
+                opacity: 0;
+            }
+        }
+
+        .animate-scan {
+            animation: scan 2s linear infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen text-slate-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- Mock Data & Types ---
+
+        const REGIONAL_DATA = [
+            { region: "양지센터(B2C)", subRegion: "양지6영업소((주)디에스엔지니어)", managerName: "정득수", stats: { total: 15, submitted: 12, rate: 80 } },
+            { region: "양지센터(B2C)", subRegion: "양지7영업소((주)서현테크)", managerName: "전종규", stats: { total: 12, submitted: 5, rate: 41 } },
+            { region: "양지센터(B2C)", subRegion: "양지8영업소(스타일룸)", managerName: "이동훈", stats: { total: 8, submitted: 8, rate: 100 } },
+            { region: "양지센터(B2C)", subRegion: "양지12영업소(TY서비스)", managerName: "김태영", stats: { total: 10, submitted: 2, rate: 20 } },
+            { region: "양지센터(B2C)", subRegion: "양지2_2영업소(엠케이프로젝트퍼니처)", managerName: "황원영", stats: { total: 6, submitted: 6, rate: 100 } },
+            { region: "양지센터(B2C)", subRegion: "양지23영업소(일룸)", managerName: "신승민", stats: { total: 20, submitted: 15, rate: 75 } },
+            { region: "양지센터(B2C)", subRegion: "양지13영업소", managerName: "강민섭", stats: { total: 5, submitted: 0, rate: 0 } },
+            { region: "양지센터(B2C)", subRegion: "양지9영업소(그랑팩토리)", managerName: "신민혁", stats: { total: 9, submitted: 4, rate: 44 } },
+            { region: "양지센터(B2C)", subRegion: "안성1영업소(유빈산업)", managerName: "이수완", stats: { total: 14, submitted: 10, rate: 71 } },
+            { region: "양지센터(B2C)", subRegion: "양지22영업소(에이와이가구)", managerName: "김태안", stats: { total: 7, submitted: 3, rate: 42 } },
+            { region: "양지센터(B2C)", subRegion: "양지2_1영업소(요다프렌즈)", managerName: "이승민", stats: { total: 11, submitted: 8, rate: 72 } },
+
+            // 양지센터 B2B
+            { region: "양지센터(B2B)", subRegion: "양지14영업소(LHS)", managerName: "이현석", stats: { total: 20, submitted: 18, rate: 90 } },
+            { region: "양지센터(B2B)", subRegion: "양지15영업소(CMS 프로모션)", managerName: "이정일", stats: { total: 15, submitted: 5, rate: 33 } },
+            { region: "양지센터(B2B)", subRegion: "양지16영업소(오성)", managerName: "손대만", stats: { total: 12, submitted: 12, rate: 100 } },
+            { region: "양지센터(B2B)", subRegion: "양지17영업소(온찬유통)", managerName: "신승현", stats: { total: 10, submitted: 9, rate: 90 } },
+            { region: "양지센터(B2B)", subRegion: "양지18영업소(모든퍼니처)", managerName: "김현섭", stats: { total: 8, submitted: 1, rate: 12 } },
+            { region: "양지센터(B2B)", subRegion: "양지19영업소(드래곤)", managerName: "김용훈", stats: { total: 16, submitted: 8, rate: 50 } },
+            { region: "양지센터(B2B)", subRegion: "양지20영업소(정인유통)", managerName: "김정훈", stats: { total: 14, submitted: 12, rate: 85 } },
+
+            // 지방센터 (통합)
+            { region: "지방센터", subRegion: "부산1영업소(태인유통)", managerName: "김태호", stats: { total: 25, submitted: 20, rate: 80 } },
+            { region: "지방센터", subRegion: "부산(기장)2영업소(태준유통)", managerName: "구본준", stats: { total: 18, submitted: 6, rate: 33 } },
+            { region: "지방센터", subRegion: "전남1영업소(스마일유통)", managerName: "윤성민", stats: { total: 12, submitted: 12, rate: 100 } },
+            { region: "지방센터", subRegion: "창원1영업소(정빈유통)", managerName: "권재균", stats: { total: 15, submitted: 10, rate: 66 } },
+            { region: "지방센터", subRegion: "울산1영업소(수연유통)", managerName: "임성현", stats: { total: 14, submitted: 7, rate: 50 } },
+            { region: "지방센터", subRegion: "제주1영업소(스마일유통)", managerName: "윤성민", stats: { total: 8, submitted: 2, rate: 25 } },
+
+            // 대구센터
+            { region: "대구센터", subRegion: "대구1영업소(투윈스)", managerName: "임재복", stats: { total: 22, submitted: 20, rate: 90 } },
+            { region: "대구센터", subRegion: "대구2영업소(대구가구)", managerName: "이찬희", stats: { total: 18, submitted: 15, rate: 83 } },
+            { region: "대구센터", subRegion: "대구3영업소(형제유통)", managerName: "신종화", stats: { total: 12, submitted: 4, rate: 33 } },
+            { region: "대구센터", subRegion: "대구4영업소(석퍼시스)", managerName: "백명석", stats: { total: 10, submitted: 10, rate: 100 } },
+
+            // 대전센터
+            { region: "대전센터", subRegion: "대전1영업소(주식회사오제이더블유)", managerName: "오진우", stats: { total: 20, submitted: 5, rate: 25 } },
+            { region: "대전센터", subRegion: "대전2영업소(주식회사에스엔티)", managerName: "김기진", stats: { total: 15, submitted: 14, rate: 93 } },
+            { region: "대전센터", subRegion: "대전3영업소(주식회사티오피플랜)", managerName: "김경진", stats: { total: 12, submitted: 6, rate: 50 } },
+            { region: "대전센터", subRegion: "대전4영업소(무빙인)", managerName: "최재강", stats: { total: 18, submitted: 18, rate: 100 } },
+            { region: "대전센터", subRegion: "대전5영업소(비비디)", managerName: "김태성", stats: { total: 16, submitted: 8, rate: 50 } },
+
+            // 광주센터
+            { region: "광주센터", subRegion: "광주1영업소(주식회사와이에스유통)", managerName: "김영삼", stats: { total: 25, submitted: 20, rate: 80 } },
+            { region: "광주센터", subRegion: "광주2영업소(FIT퍼니처)", managerName: "김재랑", stats: { total: 20, submitted: 10, rate: 50 } },
+            { region: "광주센터", subRegion: "전북1영업소(대영)", managerName: "김민상", stats: { total: 15, submitted: 15, rate: 100 } },
+        ];
+
+        const MANAGER_CHECKLIST = [
+            { id: "m1", title: "사업자등록증", required: true, status: "pending" },
+            { id: "m2", title: "위수탁계약서", required: true, status: "pending" },
+            { id: "m3", title: "사무실 임대차계약서", required: true, status: "pending" },
+            { id: "m4", title: "사무실 전대차 동의서", required: false, status: "pending" },
+            { id: "m5", title: "영업소 등기부등본", required: true, status: "pending" },
+            { id: "m6", title: "산재보험가입증명원", required: true, status: "pending" },
+            { id: "m7", title: "자동차등록증", required: false, status: "pending" },
+            { id: "m8", title: "화물운송종사 자격증", required: false, status: "pending" },
+            { id: "m9", title: "운전면허증", required: false, status: "pending" },
+            { id: "m10", title: "안전교육 이수증", required: false, status: "pending" },
+            { id: "m11", title: "화물운송 허가증", required: true, status: "pending" },
+            { id: "m12", title: "주민등록등본", required: true, status: "pending" },
+        ];
+
+        const COURIER_CHECKLIST = [
+            { id: "c1", title: "위수탁계약서", required: true, status: "pending" },
+            { id: "c2", title: "사업자등록증", required: true, status: "pending" },
+            { id: "c3", title: "산재보험가입증명원", required: true, status: "pending" },
+            { id: "c4", title: "안전교육 이수증", required: true, status: "pending" },
+            { id: "c5", title: "자동차등록증", required: true, status: "pending" },
+            { id: "c6", title: "화물운송종사 자격증", required: true, status: "pending" },
+            { id: "c7", title: "운전면허증", required: true, status: "pending" },
+            { id: "c8", title: "화물운송 허가증", required: true, status: "pending" },
+            { id: "c9", title: "주민등록등본", required: true, status: "pending" },
+        ];
+
+        const generateMockDrivers = (subRegion) => [
+            { id: 1, name: "김철수", phone: "010-1***-5678", status: "submitted", rate: 100 },
+            { id: 2, name: "이영희", phone: "010-2***-6789", status: "pending", rate: 40 },
+            { id: 3, name: "박민수", phone: "010-3***-7890", status: "pending", rate: 0 },
+            { id: 4, name: "최지훈", phone: "010-4***-8901", status: "submitted", rate: 100 },
+        ];
+
+        // --- Icons ---
+        const Icons = {
+            Truck: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 18H3c-.6 0-1-.4-1-1V7c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v11" /><path d="M14 9h4l4 4v4c0 .6-.4 1-1 1h-2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>,
+            Building2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" /><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" /><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" /><path d="M10 6h4" /><path d="M10 10h4" /><path d="M10 14h4" /><path d="M10 18h4" /></svg>,
+            CheckCircle2: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></svg>,
+            Circle: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /></svg>,
+            ChevronRight: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>,
+            ChevronLeft: ({ className, onClick }) => <svg onClick={onClick} className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>,
+            Camera: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></svg>,
+            FileText: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg>,
+            RefreshCw: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>,
+            Check: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>,
+            ShieldCheck: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="m9 12 2 2 4-4" /></svg>,
+            BarChart3: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></svg>,
+            Users: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
+            LogOut: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>,
+            Home: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>,
+            Settings: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>,
+            File: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>,
+            Pencil: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>,
+            ChevronDown: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>,
+            X: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>,
+            Save: ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>,
+        };
+
+        // --- Section Configuration for Admin Dashboard ---
+        const SECTION_CONFIG = [
+            {
+                id: "s1", title: "양지센터/안성센터 B2C", color: "#FF6F43",
+                offices: [
+                    "양지6영업소((주)디에스엔지니어)", "양지7영업소((주)서현테크)", "양지8영업소(스타일룸)",
+                    "양지12영업소(TY서비스)", "양지2_2영업소(엠케이프로젝트퍼니처)", "양지23영업소(일룸)",
+                    "양지13영업소", "양지9영업소(그랑팩토리)", "안성1영업소(유빈산업)",
+                    "양지22영업소(에이와이가구)", "양지2_1영업소(요다프렌즈)"
+                ]
+            },
+            {
+                id: "s2", title: "양지센터 B2B", color: "#3B82F6",
+                offices: [
+                    "양지14영업소(LHS)", "양지15영업소(CMS 프로모션)", "양지16영업소(오성)",
+                    "양지17영업소(온찬유통)", "양지18영업소(모든퍼니처)", "양지19영업소(드래곤)",
+                    "양지20영업소(정인유통)"
+                ]
+            },
+            {
+                id: "s3", title: "지방센터", color: "#10B981",
+                offices: [
+                    "부산1영업소(태인유통)", "부산(기장)2영업소(태준유통)", "전남1영업소(스마일유통)",
+                    "창원1영업소(정빈유통)", "울산1영업소(수연유통)", "제주1영업소(스마일유통)"
+                ]
+            },
+            {
+                id: "s4", title: "대구센터 영업소", color: "#8B5CF6",
+                offices: [
+                    "대구1영업소(투윈스)", "대구2영업소(대구가구)", "대구3영업소(형제유통)", "대구4영업소(석퍼시스)"
+                ]
+            },
+            {
+                id: "s5", title: "대전센터 영업소", color: "#F59E0B",
+                offices: [
+                    "대전1영업소(주식회사오제이더블유)", "대전2영업소(주식회사에스엔티)",
+                    "대전3영업소(주식회사티오피플랜)", "대전4영업소(무빙인)", "대전5영업소(비비디)"
+                ]
+            },
+            {
+                id: "s6", title: "광주센터 영업소", color: "#EC4899",
+                offices: [
+                    "광주1영업소(주식회사와이에스유통)", "광주2영업소(FIT퍼니처)", "전북1영업소(대영)"
+                ]
+            }
+        ];
+
+        // --- UI Components ---
+        const Button = ({ children, className = "", variant = "default", ...props }) => {
+            const base = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2";
+            const variants = {
+                default: "bg-letus-orange text-white hover:bg-letus-orange/90",
+                outline: "border border-input bg-background hover:bg-letus-light hover:text-letus-orange",
+                ghost: "hover:bg-slate-100 hover:text-slate-900",
+            };
+            return <button className={`${base} ${variants[variant] || variants.default} ${className}`} {...props}>{children}</button>;
+        };
+
+        const Card = ({ children, className = "", onClick }) => <div onClick={onClick} className={`rounded-lg border bg-card text-card-foreground shadow-sm ${className}`}>{children}</div>;
+        const CardHeader = ({ children, className = "" }) => <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>;
+        const CardTitle = ({ children, className = "" }) => <h3 className={`text-2xl font-semibold leading-none tracking-tight ${className}`}>{children}</h3>;
+        const CardContent = ({ children, className = "" }) => <div className={`p-6 pt-0 ${className}`}>{children}</div>;
+        const CardFooter = ({ children, className = "" }) => <div className={`flex items-center p-6 pt-0 ${className}`}>{children}</div>;
+
+        const Input = ({ className = "", ...props }) => <input className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`} {...props} />;
+        const Label = ({ children, className = "", ...props }) => <label className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${className}`} {...props}>{children}</label>;
+        const Badge = ({ children, className = "", variant = "default" }) => {
+            const base = "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
+            const variants = { default: "border-transparent bg-letus-orange text-white", outline: "text-foreground" };
+            return <div className={`${base} ${variants[variant] || ""} ${className}`}>{children}</div>
+        };
+
+        // --- Pages ---
+
+        // Manager Dashboard
+        const ManagerDashboard = ({ user, onNavigate }) => {
+            const [tab, setTab] = useState("docs");
+
+            // Shared Logic: Load checklist from storage or default
+            const storageKey = `letus_docs_${user.name}_${user.phone}`;
+            const [checklist, setChecklist] = useState(() => {
+                const saved = localStorage.getItem(storageKey);
+                return saved ? JSON.parse(saved) : MANAGER_CHECKLIST;
+            });
+
+            // Filter drivers based on the manager's agency (subRegion)
+            const allDrivers = generateMockDrivers(user.subRegion);
+            const drivers = allDrivers;
+
+            const progress = Math.round((checklist.filter(i => i.status === 'completed').length / checklist.length) * 100);
+
+            return (
+                <div className="min-h-screen bg-slate-50 pb-20">
+                    <div className="bg-letus-black text-white p-6 pb-12">
+                        <div className="flex justify-between items-start max-w-4xl mx-auto">
+                            <div>
+                                <div className="flex items-center gap-2 text-letus-orange mb-1 font-bold text-sm">
+                                    <Icons.Building2 className="h-4 w-4" /> {user.region} / {user.subRegion}
+                                </div>
+                                <h1 className="text-2xl font-bold">{user.name} 소장님</h1>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={() => onNavigate('landing')}>
+                                    <Icons.LogOut className="h-4 w-4 mr-2" /> 나가기
+                                </Button>
+                                <div className="text-right">
+                                    <div className="text-3xl font-bold text-letus-orange">{progress}%</div>
+                                    <div className="text-xs text-slate-400">제출 완료</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="container mx-auto max-w-4xl -mt-6 px-4">
+                        <div className="bg-white rounded-xl shadow-lg p-4 flex mb-6 items-center justify-between">
+                            <h2 className="font-bold text-lg text-letus-charcoal">내 서류 제출 현황</h2>
+                            <div className="text-xs text-slate-400">총 {checklist.length}개 서류</div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {checklist.map(item => (
+                                <Card key={item.id} className="cursor-pointer hover:shadow-md" onClick={() => onNavigate('upload', { item, user })}>
+                                    <CardContent className="p-4 flex justify-between items-center">
+                                        <div className="flex gap-3">
+                                            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${item.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                {item.status === 'completed' ? <Icons.CheckCircle2 className="h-5 w-5" /> : <Icons.Circle className="h-5 w-5" />}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold">{item.title}</div>
+                                                <div className="text-xs text-slate-500">{item.required ? '필수' : '선택'} | {item.status === 'completed' ? '제출됨' : '미제출'}</div>
+                                            </div>
+                                        </div>
+                                        <Icons.ChevronRight className="text-slate-300" />
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        const UploadPage = ({ data, onNavigate }) => {
+            const [step, setStep] = useState("upload");
+            const [img, setImg] = useState(null);
+            const [fileType, setFileType] = useState(null);
+            const [fileName, setFileName] = useState("");
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const fileInput = useRef(null);
+
+            const handleFile = (e) => {
+                const f = e.target.files[0];
+                if (f) {
+                    setFileType(f.type);
+                    setFileName(f.name);
+                    const r = new FileReader();
+                    r.onload = (e) => {
+                        setImg(e.target.result);
+                        setStep("verify");
+                    };
+                    r.readAsDataURL(f);
+                }
+            };
+
+            const handleFinalSubmit = async () => {
+                setIsSubmitting(true);
+                const storageKey = `letus_docs_${data.user.name}_${data.user.phone}`;
+                const saved = localStorage.getItem(storageKey);
+                let currentChecklist = saved ? JSON.parse(saved) : (data.user.role === 'manager' ? MANAGER_CHECKLIST : COURIER_CHECKLIST);
+
+                const updatedChecklist = currentChecklist.map(item =>
+                    item.id === data.item.id ? { ...item, status: 'completed' } : item
+                );
+                localStorage.setItem(storageKey, JSON.stringify(updatedChecklist));
+
+                const allSubmissions = JSON.parse(localStorage.getItem('letus_all_submissions') || '[]');
+                allSubmissions.push({
+                    user: data.user,
+                    docId: data.item.id,
+                    docTitle: data.item.title,
+                    timestamp: new Date().toISOString(),
+                    fileName: fileName
+                });
+                localStorage.setItem('letus_all_submissions', JSON.stringify(allSubmissions));
+
+                const WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/26454548/uevb7uh/";
+                const payload = {
+                    timestamp: new Date().toISOString(),
+                    user: {
+                        name: data.user.name,
+                        region: data.user.region,
+                        subRegion: data.user.subRegion,
+                        role: data.user.role
+                    },
+                    document: {
+                        id: data.item.id,
+                        title: data.item.title,
+                        required: data.item.required,
+                        fileName: fileName
+                    }
+                };
+
+                try {
+                    await fetch(WEBHOOK_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    alert("서류가 성공적으로 제출되었습니다.");
+                    onNavigate(-1);
+                } catch (error) {
+                    console.error("Webhook failed:", error);
+                    alert("전송 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-50 flex flex-col">
+                    <header className="bg-white p-4 flex gap-4 items-center border-b">
+                        <Icons.ChevronLeft className="cursor-pointer" onClick={() => onNavigate(-1)} />
+                        <h1 className="font-bold">{data.item.title} 제출</h1>
+                    </header>
+                    <main className="flex-1 p-6 flex flex-col">
+                        {step === 'upload' && (
+                            <div className="flex-1 flex flex-col justify-center gap-6">
+                                <Card className="border-2 border-dashed border-slate-300 rounded-xl flex-1 max-h-[400px] flex flex-col items-center justify-center bg-slate-100 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => fileInput.current.click()}>
+                                    <Icons.Camera className="h-12 w-12 text-slate-400 mb-4" />
+                                    <span className="font-bold text-slate-500">사진 / PDF 업로드하기</span>
+                                    <p className="text-xs text-slate-400 mt-2">이미지 파일 또는 PDF 파일을 선택해주세요.</p>
+                                    <input ref={fileInput} type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFile} />
+                                </Card>
+                            </div>
+                        )}
+                        {step === 'verify' && (
+                            <div className="space-y-6 flex-1 flex flex-col">
+                                <Card className="flex-1 overflow-hidden flex flex-col border-letus-orange/20 shadow-sm">
+                                    <CardHeader className="bg-slate-50 border-b py-3">
+                                        <CardTitle className="text-sm flex items-center gap-2">
+                                            <Icons.File className="h-4 w-4 text-letus-orange" />
+                                            {fileName}
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="flex-1 p-0 bg-slate-200 flex items-center justify-center overflow-auto">
+                                        {fileType === 'application/pdf' ? (
+                                            <div className="flex flex-col items-center gap-3 text-slate-500 py-10">
+                                                <Icons.FileText className="h-20 w-20 text-slate-400" />
+                                                <div className="text-center">
+                                                    <p className="font-bold">PDF 문서 선택됨</p>
+                                                    <p className="text-xs">미리보기는 지원하지 않으나 전송은 가능합니다.</p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <img src={img} className="max-w-full" alt="업로드 이미지 미리보기" />
+                                        )}
+                                    </CardContent>
+                                </Card>
+
+                                <div className="space-y-3">
+                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-800 flex gap-3 items-center">
+                                        <Icons.CheckCircle2 className="text-blue-600 h-5 w-5 shrink-0" />
+                                        <div className="text-xs font-medium leading-tight">파일이 성공적으로 선택되었습니다.<br />내용을 확인하신 후 아래 버튼을 눌러 제출을 완료하세요.</div>
+                                    </div>
+                                    <Button className="w-full h-14 text-lg font-bold shadow-lg" disabled={isSubmitting} onClick={handleFinalSubmit}>
+                                        {isSubmitting ? "전송 중..." : "서류 제출하기"}
+                                    </Button>
+                                    <Button variant="ghost" className="w-full text-slate-400 text-xs" onClick={() => setStep('upload')}>
+                                        취소하고 다시 업로드하기
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        // Admin Dashboard
+        const AdminDashboard = ({ onNavigate }) => {
+            const [submissions, setSubmissions] = useState([]);
+            const [expandedSections, setExpandedSections] = useState({ "s1": true });
+            const [editingOffice, setEditingOffice] = useState(null);
+            const [editValues, setEditValues] = useState({});
+
+            // Load admin section overrides from localStorage
+            const [sectionOverrides, setSectionOverrides] = useState(() => {
+                const saved = localStorage.getItem('letus_admin_overrides');
+                return saved ? JSON.parse(saved) : {};
+            });
+
+            useEffect(() => {
+                const saved = localStorage.getItem('letus_all_submissions');
+                if (saved) setSubmissions(JSON.parse(saved));
+            }, []);
+
+            const toggleSection = (id) => {
+                setExpandedSections(prev => ({ ...prev, [id]: !prev[id] }));
+            };
+
+            const getOfficeData = (subRegion) => {
+                const base = REGIONAL_DATA.find(d => d.subRegion === subRegion);
+                const override = sectionOverrides[subRegion];
+                if (override) {
+                    return { subRegion, managerName: base ? base.managerName : "-", stats: { total: override.total, submitted: override.submitted, rate: override.total > 0 ? Math.round((override.submitted / override.total) * 100) : 0 }, notes: override.notes || "" };
+                }
+                if (base) {
+                    return { ...base, notes: "" };
+                }
+                return { subRegion, managerName: "-", stats: { total: 0, submitted: 0, rate: 0 }, notes: "" };
+            };
+
+            const startEdit = (subRegion) => {
+                const d = getOfficeData(subRegion);
+                setEditingOffice(subRegion);
+                setEditValues({ total: d.stats.total, submitted: d.stats.submitted, notes: d.notes || "" });
+            };
+
+            const saveEdit = (subRegion) => {
+                const newOverrides = { ...sectionOverrides, [subRegion]: { total: parseInt(editValues.total) || 0, submitted: parseInt(editValues.submitted) || 0, notes: editValues.notes || "" } };
+                setSectionOverrides(newOverrides);
+                localStorage.setItem('letus_admin_overrides', JSON.stringify(newOverrides));
+                setEditingOffice(null);
+            };
+
+            const cancelEdit = () => { setEditingOffice(null); };
+
+            // Aggregate stats
+            const allOffices = SECTION_CONFIG.flatMap(s => s.offices);
+            const totalAllTotal = allOffices.reduce((sum, o) => sum + getOfficeData(o).stats.total, 0);
+            const totalAllSubmitted = allOffices.reduce((sum, o) => sum + getOfficeData(o).stats.submitted, 0);
+            const overallRate = totalAllTotal > 0 ? Math.round((totalAllSubmitted / totalAllTotal) * 100) : 0;
+
+            return (
+                <div className="min-h-screen bg-slate-50">
+                    {/* Header */}
+                    <div className="bg-letus-black text-white p-6 pb-8">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h1 className="text-2xl font-bold">관리자 대시보드</h1>
+                                    <p className="text-slate-400 text-sm mt-1">영업소별 서류 제출 현황 관리</p>
+                                </div>
+                                <Button variant="ghost" className="text-white hover:bg-white/10" onClick={() => onNavigate('landing')}>
+                                    <Icons.Home className="h-4 w-4 mr-2" /> 초기화면
+                                </Button>
+                            </div>
+                            {/* Summary Stats */}
+                            <div className="grid grid-cols-4 gap-4">
+                                <div className="bg-white/10 rounded-xl p-4">
+                                    <div className="text-3xl font-bold text-letus-orange">{overallRate}%</div>
+                                    <div className="text-xs text-slate-400 mt-1">전체 취합률</div>
+                                </div>
+                                <div className="bg-white/10 rounded-xl p-4">
+                                    <div className="text-3xl font-bold">{totalAllSubmitted}<span className="text-sm font-normal text-slate-400 ml-1">건</span></div>
+                                    <div className="text-xs text-slate-400 mt-1">제출 완료</div>
+                                </div>
+                                <div className="bg-white/10 rounded-xl p-4">
+                                    <div className="text-3xl font-bold text-red-400">{totalAllTotal - totalAllSubmitted}<span className="text-sm font-normal text-slate-400 ml-1">건</span></div>
+                                    <div className="text-xs text-slate-400 mt-1">미제출</div>
+                                </div>
+                                <div className="bg-white/10 rounded-xl p-4">
+                                    <div className="text-3xl font-bold">{allOffices.length}<span className="text-sm font-normal text-slate-400 ml-1">개</span></div>
+                                    <div className="text-xs text-slate-400 mt-1">전체 영업소</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-6xl mx-auto px-4 -mt-4 pb-12 space-y-4">
+                        {/* Recent Submissions */}
+                        <Card className="shadow-lg border-0">
+                            <CardHeader className="pb-3 border-b">
+                                <CardTitle className="text-lg flex items-center gap-2">
+                                    <Icons.FileText className="h-5 w-5 text-letus-orange" />
+                                    최근 제출 내역
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-0 overflow-hidden">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 border-b">
+                                        <tr>
+                                            <th className="p-3 pl-6 font-medium text-slate-500">성명</th>
+                                            <th className="p-3 font-medium text-slate-500">영업소</th>
+                                            <th className="p-3 font-medium text-slate-500">서류명</th>
+                                            <th className="p-3 pr-6 font-medium text-slate-500">시간</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {submissions.slice(-5).reverse().map((s, i) => (
+                                            <tr key={i} className="bg-white hover:bg-slate-50">
+                                                <td className="p-3 pl-6 font-bold">{s.user.name}</td>
+                                                <td className="p-3 text-slate-600">{s.user.subRegion}</td>
+                                                <td className="p-3 text-letus-orange font-medium">{s.docTitle}</td>
+                                                <td className="p-3 pr-6 text-slate-400">{new Date(s.timestamp).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                                            </tr>
+                                        ))}
+                                        {submissions.length === 0 && <tr><td colSpan="4" className="p-8 text-center text-slate-400">데이터가 없습니다.</td></tr>}
+                                    </tbody>
+                                </table>
+                            </CardContent>
+                        </Card>
+
+                        {/* Section Title */}
+                        <div className="flex items-center gap-3 pt-4">
+                            <Icons.BarChart3 className="h-6 w-6 text-letus-orange" />
+                            <h2 className="text-xl font-bold">영업소별 제출 현황</h2>
+                            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{SECTION_CONFIG.length}개 섹션</span>
+                        </div>
+
+                        {/* Sections */}
+                        {SECTION_CONFIG.map(section => {
+                            const officeDataList = section.offices.map(o => getOfficeData(o));
+                            const secTotal = officeDataList.reduce((s, d) => s + d.stats.total, 0);
+                            const secSubmitted = officeDataList.reduce((s, d) => s + d.stats.submitted, 0);
+                            const secRate = secTotal > 0 ? Math.round((secSubmitted / secTotal) * 100) : 0;
+                            const isExpanded = expandedSections[section.id];
+
+                            return (
+                                <Card key={section.id} className="shadow-md border-0 overflow-hidden">
+                                    {/* Section Header */}
+                                    <div
+                                        className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                                        onClick={() => toggleSection(section.id)}
+                                        style={{ borderLeft: `4px solid ${section.color}` }}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: section.color }}></div>
+                                            <h3 className="font-bold text-base">{section.title}</h3>
+                                            <span className="text-xs text-slate-400">{section.offices.length}개 영업소</span>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className="h-full rounded-full transition-all" style={{ width: `${secRate}%`, backgroundColor: section.color }}></div>
+                                                </div>
+                                                <span className="text-sm font-bold" style={{ color: section.color }}>{secRate}%</span>
+                                            </div>
+                                            <span className="text-xs text-slate-500">{secSubmitted}/{secTotal}건</span>
+                                            <Icons.ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                        </div>
+                                    </div>
+
+                                    {/* Section Content */}
+                                    {isExpanded && (
+                                        <div className="border-t">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-slate-50">
+                                                    <tr>
+                                                        <th className="p-3 pl-6 text-left font-medium text-slate-500">영업소명</th>
+                                                        <th className="p-3 text-left font-medium text-slate-500">소장명</th>
+                                                        <th className="p-3 text-center font-medium text-slate-500">총원</th>
+                                                        <th className="p-3 text-center font-medium text-slate-500">제출</th>
+                                                        <th className="p-3 text-center font-medium text-slate-500">취합률</th>
+                                                        <th className="p-3 text-left font-medium text-slate-500">비고</th>
+                                                        <th className="p-3 pr-6 text-center font-medium text-slate-500">편집</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y">
+                                                    {section.offices.map((officeName, idx) => {
+                                                        const d = getOfficeData(officeName);
+                                                        const isEditing = editingOffice === officeName;
+                                                        const rateColor = d.stats.rate >= 80 ? 'text-green-600 bg-green-50' : d.stats.rate >= 50 ? 'text-yellow-600 bg-yellow-50' : 'text-red-600 bg-red-50';
+
+                                                        return (
+                                                            <tr key={idx} className="bg-white hover:bg-slate-50/50">
+                                                                <td className="p-3 pl-6 font-medium text-slate-800">{officeName}</td>
+                                                                <td className="p-3 text-slate-600">{d.managerName}</td>
+                                                                {isEditing ? (
+                                                                    <>
+                                                                        <td className="p-3 text-center"><input type="number" className="w-16 h-8 text-center rounded border border-blue-300 bg-blue-50 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-400" value={editValues.total} onChange={e => setEditValues({ ...editValues, total: e.target.value })} /></td>
+                                                                        <td className="p-3 text-center"><input type="number" className="w-16 h-8 text-center rounded border border-blue-300 bg-blue-50 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-400" value={editValues.submitted} onChange={e => setEditValues({ ...editValues, submitted: e.target.value })} /></td>
+                                                                        <td className="p-3 text-center"><span className="text-xs text-slate-400">—</span></td>
+                                                                        <td className="p-3"><input type="text" className="w-full h-8 px-2 rounded border border-blue-300 bg-blue-50 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="메모 입력" value={editValues.notes} onChange={e => setEditValues({ ...editValues, notes: e.target.value })} /></td>
+                                                                        <td className="p-3 pr-6 text-center">
+                                                                            <div className="flex items-center justify-center gap-1">
+                                                                                <button onClick={() => saveEdit(officeName)} className="p-1.5 rounded-md bg-green-100 text-green-700 hover:bg-green-200 transition-colors"><Icons.Check className="h-3.5 w-3.5" /></button>
+                                                                                <button onClick={cancelEdit} className="p-1.5 rounded-md bg-red-100 text-red-700 hover:bg-red-200 transition-colors"><Icons.X className="h-3.5 w-3.5" /></button>
+                                                                            </div>
+                                                                        </td>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <td className="p-3 text-center font-bold">{d.stats.total}</td>
+                                                                        <td className="p-3 text-center font-bold" style={{ color: section.color }}>{d.stats.submitted}</td>
+                                                                        <td className="p-3 text-center"><span className={`text-xs font-bold px-2 py-1 rounded-full ${rateColor}`}>{d.stats.rate}%</span></td>
+                                                                        <td className="p-3 text-xs text-slate-400">{d.notes || ""}</td>
+                                                                        <td className="p-3 pr-6 text-center">
+                                                                            <button onClick={() => startEdit(officeName)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-letus-orange transition-colors"><Icons.Pencil className="h-3.5 w-3.5" /></button>
+                                                                        </td>
+                                                                    </>
+                                                                )}
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                            {/* Section Footer */}
+                                            <div className="bg-slate-50 px-6 py-3 flex justify-between items-center border-t">
+                                                <span className="text-xs text-slate-500">섹션 합계</span>
+                                                <div className="flex items-center gap-4 text-xs">
+                                                    <span className="font-medium">총원 <span className="font-bold text-slate-800">{secTotal}</span></span>
+                                                    <span className="font-medium">제출 <span className="font-bold" style={{ color: section.color }}>{secSubmitted}</span></span>
+                                                    <span className="font-medium">미제출 <span className="font-bold text-red-500">{secTotal - secSubmitted}</span></span>
+                                                    <span className="font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: section.color + '15', color: section.color }}>{secRate}%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </Card>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        const CourierDashboard = ({ user, onNavigate }) => {
+            const storageKey = `letus_docs_${user.name}_${user.phone}`;
+            const [checklist, setChecklist] = useState(() => {
+                const saved = localStorage.getItem(storageKey);
+                return saved ? JSON.parse(saved) : COURIER_CHECKLIST;
+            });
+
+            const progress = Math.round((checklist.filter(i => i.status === 'completed').length / checklist.length) * 100);
+
+            return (
+                <div className="min-h-screen bg-slate-50 pb-20">
+                    <div className="bg-gradient-to-br from-letus-charcoal to-letus-black text-white p-6 pb-12 rounded-b-[2rem] shadow-xl">
+                        <div className="flex justify-between items-start text-white">
+                            <div>
+                                <div className="flex items-center gap-2 text-letus-orange mb-1 font-bold text-sm">
+                                    <Icons.Truck className="h-4 w-4" /> {user.region}
+                                </div>
+                                <h1 className="text-2xl font-bold">{user.name} 기사님</h1>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={() => onNavigate('landing')}>
+                                    <Icons.LogOut className="h-4 w-4 mr-2" /> 나가기
+                                </Button>
+                                <div className="text-right">
+                                    <div className="text-3xl font-bold text-letus-orange">{progress}%</div>
+                                    <div className="text-xs text-slate-400">제출 완료</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-6">
+                            <div className="w-full bg-white/10 rounded-full h-2">
+                                <div className="bg-letus-orange h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="container mx-auto px-4 -mt-6 space-y-4 max-w-lg">
+                        <Card className="shadow-lg border-0 bg-white">
+                            <CardHeader className="pb-3 border-b"><CardTitle className="text-lg">필수 제출 서류 (9개)</CardTitle></CardHeader>
+                            <CardContent className="p-0 divide-y">
+                                {checklist.map(item => (
+                                    <div key={item.id} onClick={() => onNavigate('upload', { item, user })} className="flex items-center justify-between p-4 hover:bg-slate-50 cursor-pointer transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-lg ${item.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                {item.status === 'completed' ? <Icons.Check className="h-5 w-5" /> : <Icons.FileText className="h-5 w-5" />}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-sm">{item.title}</div>
+                                                <div className="text-xs text-slate-500">{item.required ? '필수' : '선택'}</div>
+                                            </div>
+                                        </div>
+                                        <Icons.ChevronRight className="h-4 w-4 text-slate-300" />
+                                    </div>
+                                ))}
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            )
+        }
+
+        const LandingPage = ({ onNavigate }) => {
+            const [role, setRole] = useState(null);
+            const [name, setName] = useState("");
+            const [phone, setPhone] = useState("");
+            const [selectedRegion, setSelectedRegion] = useState("");
+            const [selectedSubRegion, setSelectedSubRegion] = useState("");
+            const [adminPw, setAdminPw] = useState("");
+
+            const regions = useMemo(() => Array.from(new Set(REGIONAL_DATA.map(d => d.region))), []);
+            const subRegions = useMemo(() => {
+                if (!selectedRegion) return [];
+                return REGIONAL_DATA.filter(d => d.region === selectedRegion).map(d => d.subRegion);
+            }, [selectedRegion]);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (role === 'admin') {
+                    if (adminPw !== "letus2024") {
+                        alert("관리자 비밀번호가 일치하지 않습니다.");
+                        return;
+                    }
+                } else {
+                    if (!name || !phone || !selectedRegion || !selectedSubRegion) {
+                        alert("정보를 모두 입력해주세요."); return;
+                    }
+                }
+                onNavigate(role === 'admin' ? 'admin' : (role === 'manager' ? 'manager' : 'courier'), { name, region: selectedRegion, subRegion: selectedSubRegion, role });
+            };
+
+            return (
+                <div className="flex flex-col min-h-screen bg-letus-light/30 items-center justify-center p-4">
+                    <div className="max-w-md w-full space-y-8">
+                        <div className="text-center space-y-2">
+                            <div className="inline-block p-3 rounded-full bg-white shadow-sm mb-4">
+                                <Icons.ShieldCheck className="w-10 h-10 text-letus-orange" />
+                            </div>
+                            <h1 className="text-3xl font-bold tracking-tight text-letus-black">LETUS 서류 통합 관리</h1>
+                            <p className="text-letus-charcoal/80">필수 서류 제출 포털</p>
+                        </div>
+                        <Card className="border-slate-200 shadow-xl bg-white/90 backdrop-blur">
+                            <CardHeader>
+                                <CardTitle>로그인 / 서류 제출</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <form onSubmit={handleSubmit} className="space-y-6">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div onClick={() => setRole("manager")} className={`cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center gap-3 relative transition-all ${role === "manager" ? "border-letus-orange bg-letus-light text-letus-orange scale-105" : "border-slate-100 hover:border-slate-300"}`}>
+                                            <Icons.Building2 className="h-8 w-8" /> <span className="font-bold">영업소장</span>
+                                            {role === "manager" && <Icons.CheckCircle2 className="h-5 w-5 absolute top-3 right-3 text-letus-orange" />}
+                                        </div>
+                                        <div onClick={() => setRole("courier")} className={`cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center gap-3 relative transition-all ${role === "courier" ? "border-letus-orange bg-letus-light text-letus-orange scale-105" : "border-slate-100 hover:border-slate-300"}`}>
+                                            <Icons.Truck className="h-8 w-8" /> <span className="font-bold">택배기사</span>
+                                            {role === "courier" && <Icons.CheckCircle2 className="h-5 w-5 absolute top-3 right-3 text-letus-orange" />}
+                                        </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                        <button type="button" onClick={() => setRole("admin")} className={`text-xs hover:underline transition-colors ${role === 'admin' ? 'text-letus-orange font-bold' : 'text-slate-400'}`}>
+                                            {role === 'admin' ? '● 관리자 모드 선택됨' : '관리자 접속'}
+                                        </button>
+                                    </div>
+
+                                    {role === 'admin' && (
+                                        <div className="space-y-4">
+                                            <div className="bg-slate-100 p-3 rounded-md text-sm text-slate-600">
+                                                <span className="font-bold text-letus-orange">🔒 보안 접속</span><br />
+                                                담당자 전용 페이지입니다. 비밀번호를 입력하세요.
+                                            </div>
+                                            <Input type="password" placeholder="비밀번호 입력" value={adminPw} onChange={e => setAdminPw(e.target.value)} />
+                                        </div>
+                                    )}
+
+                                    {role && role !== 'admin' && (
+                                        <div className="space-y-4">
+                                            <select className="w-full h-10 rounded-md border border-input bg-background px-3" value={selectedRegion} onChange={e => setSelectedRegion(e.target.value)}>
+                                                <option value="">소속 센터 선택</option>
+                                                {regions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                            <select className="w-full h-10 rounded-md border border-input bg-background px-3" value={selectedSubRegion} onChange={e => setSelectedSubRegion(e.target.value)} disabled={!selectedRegion}>
+                                                <option value="">소속 영업소 선택</option>
+                                                {subRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <Input placeholder="성명" value={name} onChange={e => setName(e.target.value)} />
+                                                <Input placeholder="전화번호" value={phone} onChange={e => setPhone(e.target.value)} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <Button type="submit" className="w-full h-12 text-base font-bold shadow-lg shadow-letus-orange/20 transition-transform active:scale-95">
+                                        {role === 'admin' ? '관리자 대시보드 입장' : '시작하기'}
+                                        <Icons.ChevronRight className="ml-2 h-4 w-4" />
+                                    </Button>
+                                </form>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [page, setPage] = useState("landing");
+            const [data, setData] = useState(null); // navigation payload
+
+            const navigate = (p, d) => {
+                if (p === -1) {
+                    if (data?.user?.role === 'manager') setPage('manager');
+                    else if (data?.user?.role === 'courier') setPage('courier');
+                    else setPage('landing');
+                    return;
+                }
+                if (d) setData(d);
+                setPage(p);
+            }
+
+            return (
+                <div className="font-sans antialiased text-slate-900">
+                    {page === 'landing' && <LandingPage onNavigate={navigate} />}
+                    {page === 'manager' && <ManagerDashboard user={data} onNavigate={navigate} />}
+                    {page === 'courier' && <CourierDashboard user={data} onNavigate={navigate} />}
+                    {page === 'admin' && <AdminDashboard onNavigate={navigate} />}
+                    {page === 'upload' && <UploadPage data={data} onNavigate={navigate} />}
+                </div>
+            )
+        }
+
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
