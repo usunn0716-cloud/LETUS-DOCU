@@ -24,6 +24,7 @@ export interface FirestoreUser {
     id?: string;
     name: string;
     phone: string;
+    birthday?: string;  // 생년월일 6자리 (예: 901215)
     role: "manager" | "courier" | "driver";
     region: string;
     subRegion: string;
@@ -31,14 +32,15 @@ export interface FirestoreUser {
 }
 
 /**
- * 이름 + 전화번호로 기존 사용자 조회
- * 동일 이름+전화번호면 같은 사용자로 인식 (세션 기억)
+ * 이름 + 전화번호 + 생년월일로 기존 사용자 조회
+ * 세 가지가 모두 일치해야 같은 사용자로 인식
  */
-export async function findUserByNamePhone(name: string, phone: string): Promise<FirestoreUser | null> {
+export async function findUserByNamePhoneBirthday(name: string, phone: string, birthday: string): Promise<FirestoreUser | null> {
     const q = query(
         collection(db, "users"),
         where("name", "==", name),
-        where("phone", "==", phone)
+        where("phone", "==", phone),
+        where("birthday", "==", birthday)
     );
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
@@ -59,12 +61,12 @@ export async function createUser(user: Omit<FirestoreUser, "id" | "createdAt">):
 
 /**
  * 사용자 조회 또는 생성 (로그인 시 호출)
- * → 동일 이름+전화번호면 기존 유저 반환, 없으면 새로 등록
+ * → 동일 이름+전화번호+생년월일이면 기존 유저 반환, 없으면 새로 등록
  */
 export async function findOrCreateUser(
     data: Omit<FirestoreUser, "id" | "createdAt">
 ): Promise<FirestoreUser> {
-    const existing = await findUserByNamePhone(data.name, data.phone);
+    const existing = await findUserByNamePhoneBirthday(data.name, data.phone, data.birthday || "");
     if (existing) {
         // 역할/소속 변경 시 업데이트
         if (existing.region !== data.region || existing.subRegion !== data.subRegion || existing.role !== data.role) {

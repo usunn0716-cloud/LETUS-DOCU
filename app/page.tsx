@@ -112,6 +112,7 @@ export default function LandingPage() {
             const user = await findOrCreateUser({
                 name,
                 phone,
+                birthday,
                 role: userType,
                 region: selectedRegion,
                 subRegion: selectedSubRegion,
