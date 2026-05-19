@@ -110,6 +110,16 @@ function UploadPageContent() {
         try {
             const processedFiles: File[] = [];
             for (const f of rawFiles) {
+                const isPdf = f.name.toLowerCase().endsWith(".pdf");
+                if (isPdf && f.size > 3.0 * 1024 * 1024) {
+                    alert(`[용량 초과] "${f.name}" 파일의 용량이 너무 큽니다. PDF 파일은 최대 3MB 이하만 업로드 가능합니다. 이미지를 캡처하여 JPEG/PNG 파일로 제출하시거나 용량을 줄여서 다시 시도해주세요.`);
+                    continue;
+                }
+                if (!isPdf && f.size > 10.0 * 1024 * 1024) {
+                    alert(`[용량 초과] "${f.name}" 파일의 용량이 너무 큽니다. 이미지는 최대 10MB 이하만 업로드 가능합니다.`);
+                    continue;
+                }
+
                 const processed = await processUploadImage(f);
                 processedFiles.push(processed);
             }
@@ -253,6 +263,16 @@ function UploadPageContent() {
     const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const rawFile = e.target.files?.[0];
         if (rawFile) {
+            const isPdf = rawFile.name.toLowerCase().endsWith(".pdf");
+            if (isPdf && rawFile.size > 3.0 * 1024 * 1024) {
+                alert(`[용량 초과] 파일의 용량이 너무 큽니다. PDF 파일은 최대 3MB 이하만 업로드 가능합니다. 이미지를 캡처하여 JPEG/PNG 파일로 제출하시거나 용량을 줄여서 다시 시도해주세요.`);
+                return;
+            }
+            if (!isPdf && rawFile.size > 10.0 * 1024 * 1024) {
+                alert(`[용량 초과] 파일의 용량이 너무 큽니다. 이미지는 최대 10MB 이하만 업로드 가능합니다.`);
+                return;
+            }
+
             setIsProcessingFile(true);
             try {
                 // HEIC 변환 및 EXIF 자동 회전/압축
@@ -307,9 +327,20 @@ function UploadPageContent() {
                             role: role
                         }),
                     });
+                    if (!response.ok) {
+                        const text = await response.text();
+                        const errMsg = text.includes("Too Large") || response.status === 413
+                            ? "업로드 용량 한도를 초과했습니다. PDF는 3MB 이하만 가능합니다."
+                            : `서버 오류 (${response.status})`;
+                        alert(`AI 스캔 중 문제가 발생했습니다: ${errMsg}`);
+                        setIsSubmitting(false);
+                        setIsVerifying(false);
+                        setStep("verify");
+                        return;
+                    }
                     aiResult = await response.json();
-                    if (!response.ok || aiResult.error) {
-                        alert(`AI 스캔 중 문제가 발생했습니다: ${aiResult.error || "서버 오류"}`);
+                    if (aiResult.error) {
+                        alert(`AI 스캔 중 문제가 발생했습니다: ${aiResult.error}`);
                         setIsSubmitting(false);
                         setIsVerifying(false);
                         setStep("verify");
@@ -433,6 +464,16 @@ function UploadPageContent() {
     const handleSlotFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const rawFile = e.target.files?.[0];
         if (!rawFile) return;
+
+        const isPdf = rawFile.name.toLowerCase().endsWith(".pdf");
+        if (isPdf && rawFile.size > 3.0 * 1024 * 1024) {
+            alert(`[용량 초과] 파일의 용량이 너무 큽니다. PDF 파일은 최대 3MB 이하만 업로드 가능합니다. 이미지를 캡처하여 JPEG/PNG 파일로 제출하시거나 용량을 줄여서 다시 시도해주세요.`);
+            return;
+        }
+        if (!isPdf && rawFile.size > 10.0 * 1024 * 1024) {
+            alert(`[용량 초과] 파일의 용량이 너무 큽니다. 이미지는 최대 10MB 이하만 업로드 가능합니다.`);
+            return;
+        }
 
         setIsProcessingFile(true);
         try {

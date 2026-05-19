@@ -110,6 +110,16 @@ export default function BulkUploadZone({
         try {
             const processedFiles: BulkFile[] = [];
             for (const f of newFiles) {
+                const isPdf = f.name.toLowerCase().endsWith(".pdf");
+                if (isPdf && f.size > 3.0 * 1024 * 1024) {
+                    alert(`[용량 초과] "${f.name}" 파일의 용량이 너무 큽니다. PDF 파일은 최대 3MB 이하만 업로드 가능합니다. 이미지를 캡처(스냅샷)하여 JPEG/PNG 파일로 제출하시거나 용량을 줄여서 다시 시도해주세요.`);
+                    continue;
+                }
+                if (!isPdf && f.size > 10.0 * 1024 * 1024) {
+                    alert(`[용량 초과] "${f.name}" 파일의 용량이 너무 큽니다. 이미지는 최대 10MB 이하만 업로드 가능합니다.`);
+                    continue;
+                }
+
                 const processed = await processUploadImage(f);
                 processedFiles.push({
                     file: processed,
@@ -177,6 +187,16 @@ export default function BulkUploadZone({
                         userRegion: region,
                     }),
                 });
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    const errMsg = text.includes("Too Large") || response.status === 413
+                        ? "용량 한도를 초과했습니다 (최대 3MB)."
+                        : `AI 점검 오류 (${response.status})`;
+                    updateFileStatus(f.id, "error", { error: errMsg });
+                    continue;
+                }
+
                 const aiResult = await response.json();
 
                 if (!response.ok || aiResult.error) {
