@@ -4,7 +4,8 @@ import { DocumentItem, RegionalStat, User } from "../types";
 
 export const MANAGER_CHECKLIST_TEMPLATE: DocumentItem[] = [
     { id: "m1", title: "사업자등록증", type: "image", required: true, status: "pending" },
-    { id: "m2", title: "위수탁계약서, 부속합의서", type: "image", required: true, status: "pending" },
+    { id: "m2", title: "위수탁계약서", type: "image", required: true, status: "pending" },
+    { id: "m2b", title: "부속합의서", type: "image", required: true, status: "pending" },
     { id: "m3", title: "사무실 임대(전대)차계약서", type: "image", required: true, status: "pending" },
     { id: "m4", title: "사무실 전대차 동의서", type: "image", required: false, status: "pending" },
     { id: "m5", title: "영업소 등기부등본", type: "image", required: true, status: "pending" },
@@ -19,7 +20,8 @@ export const MANAGER_CHECKLIST_TEMPLATE: DocumentItem[] = [
 ];
 
 export const COURIER_CHECKLIST_TEMPLATE: DocumentItem[] = [
-    { id: "c1", title: "위수탁계약서, 부속합의서", type: "image", required: true, status: "pending" },
+    { id: "c1", title: "위수탁계약서", type: "image", required: true, status: "pending" },
+    { id: "c1b", title: "부속합의서", type: "image", required: true, status: "pending" },
     { id: "c2", title: "사업자등록증", type: "image", required: true, status: "pending" },
     { id: "c3", title: "산재보험가입증명원", type: "image", required: true, status: "pending" },
     { id: "c4", title: "안전교육 이수증", type: "image", required: true, status: "pending" },
@@ -42,6 +44,10 @@ export const DOCUMENT_DESCRIPTIONS: Record<string, DocDescriptionLine[]> = {
         { text: '업태/종목 내 "화물운송, 운수업, 창고업, 택배, 늘찬 배달" 등이 반드시 포함' },
     ],
     m2: [
+        { text: '"계약기간 최신화"' },
+        { text: '문서 상 "체크박스 체크" 및 "서명란 날인" 필수' },
+    ],
+    m2b: [
         { text: '"계약기간 최신화"' },
         { text: '문서 상 "체크박스 체크" 및 "서명란 날인" 필수' },
     ],
@@ -84,6 +90,10 @@ export const DOCUMENT_DESCRIPTIONS: Record<string, DocDescriptionLine[]> = {
 
     // ── 택배기사 ──
     c1: [
+        { text: '"계약기간 최신화"' },
+        { text: '문서 상 "체크박스 체크" 및 "서명란 날인" 필수' },
+    ],
+    c1b: [
         { text: '"계약기간 최신화"' },
         { text: '문서 상 "체크박스 체크" 및 "서명란 날인" 필수' },
     ],

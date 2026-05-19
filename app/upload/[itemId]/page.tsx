@@ -35,8 +35,8 @@ function renderDescriptionText(text: string) {
 }
 
 // 2파일 업로드 대상 itemId
-const MULTI_FILE_IDS = ["m2", "c1"];
-const MULTI_FILE_LABELS = ["위수탁계약서", "부속합의서"];
+const MULTI_FILE_IDS: string[] = [];
+const MULTI_FILE_LABELS: string[] = [];
 
 // 갤러리(무제한 다중 파일) 업로드 대상
 const GALLERY_IDS = ["m13"];
@@ -60,6 +60,7 @@ function UploadPageContent() {
     const userId = searchParams.get("userId") || "";
     const name = searchParams.get("name") || "";
     const phone = searchParams.get("phone") || "";
+    const birthday = searchParams.get("birthday") || "";
     const region = searchParams.get("region") || "";
     const subRegion = searchParams.get("subRegion") || "";
     const role = searchParams.get("role") || "manager";
@@ -176,7 +177,7 @@ function UploadPageContent() {
             try {
                 const docs = await getUserDocuments(userId);
                 const existing = docs.find(d => d.itemId === itemId);
-                if (existing && (existing.status === "submitted" || existing.status === "approved")) {
+                if (existing && (existing.status === "submitted" || existing.status === "approved" || existing.status === "hq_review")) {
                     setExistingDocId(existing.id!);
                     setExistingFileUrl(existing.fileUrl || null);
                     setExistingRejectionCount(existing.rejectionCount || 0);
@@ -282,8 +283,8 @@ function UploadPageContent() {
         setStep("submitting");
         try {
             const targetIds = [
-                "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11", "m12",
-                "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"
+                "m1", "m2", "m2b", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11", "m12",
+                "c1", "c1b", "c2", "c3", "c4", "c5", "c6", "c7", "c8"
             ];
 
             let aiResult = null;
@@ -293,14 +294,17 @@ function UploadPageContent() {
                 try {
                     const response = await fetch("/api/verify-document", {
                         method: "POST",
-                        body: JSON.stringify({ 
-                            imageBase64: img, 
-                            fileType, 
-                            itemId, 
+                        body: JSON.stringify({
+                            imageBase64: img,
+                            fileType,
+                            itemId,
                             docTitle,
                             userName: name,
                             userPhone: phone,
-                            userSubRegion: subRegion
+                            userSubRegion: subRegion,
+                            userBirthday: birthday,
+                            userRegion: region,
+                            role: role
                         }),
                     });
                     aiResult = await response.json();
@@ -334,13 +338,32 @@ function UploadPageContent() {
 
             // 셏프 코렉션 (세진 수정): 기존 반려 이력 + OCR 통과 → 대기열 없이 바로 승인
             const isSelfCorrection = existingRejectionCount > 0 && !isOcrRejected;
-            const finalStatusOverride = isOcrRejected ? "pending" : (isSelfCorrection ? "approved" : "submitted");
+            const finalStatusOverride = isOcrRejected
+                ? (role === "manager" ? "hq_review" : "pending")
+                : (isSelfCorrection ? "approved" : "submitted");
 
             const docId = await submitDocument({
                 userId, userName: name, userPhone: phone, userRegion: region,
                 userSubRegion: subRegion, userRole: role, itemId, title: docTitle,
                 fileUrl, fileName: uploadedFileName, verificationResult: aiResult,
             }, finalStatusOverride, isOcrRejected ? 1 : 0);
+
+            // 구글 시트에 서류 링크 기록 (시트-플랫폼 동기화)
+            fetch("/api/construction-sheet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "updateDocumentLinks",
+                    name: name,
+                    birthday: birthday,
+                    phone: phone,
+                    docType: docTitle,
+                    fileUrl,
+                    center: region,
+                    subRegion: subRegion,
+                    role: role,
+                }),
+            }).catch(e => console.error("[IndividualUpload] 서류 링크 시트 기록 실패:", e));
 
             setExistingDocId(docId);
             setExistingFileUrl(fileUrl);
@@ -472,18 +495,18 @@ function UploadPageContent() {
                 // 1. AI 점검
                 setMultiVerifyingIndex(i);
                 try {
-                        const response = await fetch("/api/verify-document", {
-                            method: "POST",
-                            body: JSON.stringify({
-                                imageBase64: slot.img,
-                                fileType: slot.fileType,
-                                itemId,
-                                docTitle: label, // "위수탁계약서" or "부속합의서"
-                                userName: name,
-                                userPhone: phone,
-                                userSubRegion: subRegion
-                            }),
-                        });
+                    const response = await fetch("/api/verify-document", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            imageBase64: slot.img,
+                            fileType: slot.fileType,
+                            itemId,
+                            docTitle: label, // "위수탁계약서" or "부속합의서"
+                            userName: name,
+                            userPhone: phone,
+                            userSubRegion: subRegion
+                        }),
+                    });
                     const aiResult = await response.json();
 
                     if (!response.ok || aiResult.error) {
@@ -525,7 +548,9 @@ function UploadPageContent() {
             const allApproved = !anyOcrRejected && !anyError;
             // 셏프 코렉션: 기존 반려 이력 + OCR 전체 통과 → 바로 승인
             const isSelfCorrection = existingRejectionCount > 0 && allApproved;
-            const statusToSave = anyOcrRejected ? "pending" : (isSelfCorrection ? "approved" : "submitted");
+            const statusToSave = anyOcrRejected
+                ? (role === "manager" ? "hq_review" : "pending")
+                : (isSelfCorrection ? "approved" : "submitted");
 
             // 모든 상태(적합/부적합)의 파일을 저장
             const hasAnyUploaded = slot0HasUrl || slot1HasUrl;
@@ -546,7 +571,7 @@ function UploadPageContent() {
                     fileUrl2: slot1HasUrl && slot0HasUrl ? newSlots[1].savedUrl! : undefined,
                     fileName2: slot1HasUrl && slot0HasUrl ? newSlots[1].fileName : undefined,
                     verificationResult2: slot1HasUrl && slot0HasUrl ? newSlots[1].verificationResult : undefined,
-                }, statusToSave as "submitted" | "pending" | "approved", anyOcrRejected ? 1 : 0);
+                }, statusToSave as "submitted" | "pending" | "approved" | "hq_review", anyOcrRejected ? 1 : 0);
                 setExistingDocId(docId);
             }
 
@@ -582,10 +607,8 @@ function UploadPageContent() {
     const descriptions = DOCUMENT_DESCRIPTIONS[itemId] || [];
 
     const goBack = () => {
-        const dashboardPath = role === "manager" ? "/dashboard/manager"
-            : (role === "driver" ? "/dashboard/driver" : "/dashboard/courier");
         const query = new URLSearchParams({ userId, name, phone, region, subRegion, role });
-        router.push(`${dashboardPath}?${query.toString()}`);
+        router.push(`/dashboard/unified?${query.toString()}`);
     };
 
     // =============================================

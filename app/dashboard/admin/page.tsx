@@ -139,7 +139,7 @@ export default function AdminDashboard() {
         try {
             const userDocs = submissions.filter(s =>
                 s.userId === targetUserId && s.fileUrl &&
-                (s.status === "submitted" || s.status === "approved" || (s.status === "pending" && s.fileUrl))
+                (s.status === "submitted" || s.status === "approved" || s.status === "hq_review" || (s.status === "pending" && s.fileUrl))
             );
             if (userDocs.length === 0) {
                 alert("다운로드할 서류가 없습니다.");
@@ -326,7 +326,7 @@ export default function AdminDashboard() {
             // submitted, approved, rejected, 그리고 파일 있는 pending 모두 초기화
             const toCancel = submissions.filter(s =>
                 s.status === "submitted" || s.status === "approved" || s.status === "rejected" ||
-                (s.status === "pending" && s.fileUrl)
+                s.status === "hq_review" || (s.status === "pending" && s.fileUrl)
             );
             for (const s of toCancel) {
                 if (!s.id) continue;
@@ -459,38 +459,55 @@ export default function AdminDashboard() {
 
             <div className="max-w-6xl mx-auto px-4 -mt-4 pb-12 space-y-4">
 
-                {/* ========== 본사 2차 심사 대기열 (영업소장 반려 → 이관된 건) ========== */}
-                {hqReviewDocs.length > 0 && (
-                    <Card className="shadow-lg border-0 border-l-4 border-l-purple-400">
-                        <CardHeader className="pb-3 border-b bg-purple-50/50">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                                <Eye className="h-5 w-5 text-purple-500" />
-                                본사 2차 심사 대기열
-                                <span className="bg-purple-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                                    {hqReviewDocs.length}건
-                                </span>
-                                <span className="text-xs font-normal text-slate-400 ml-1">영업소장 반려 → 본사 최종 확인 필요</span>
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0 overflow-hidden">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 border-b">
+                {/* ========== 본사 2차 심사 대기열 (영업소장 AI반려 직행 + 권역장/영업소장 이관 건) ========== */}
+                <Card className="shadow-lg border-0 border-l-4 border-l-purple-400">
+                    <CardHeader className="pb-3 border-b bg-purple-50/50">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Eye className="h-5 w-5 text-purple-500" />
+                            본사 2차 심사 대기열
+                            <span className="bg-purple-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                                {hqReviewDocs.length}건
+                            </span>
+                            <span className="text-xs font-normal text-slate-400 ml-1">영업소장 AI반려 직행 + 권역장/영업소장 이관 건</span>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b">
+                                <tr>
+                                    <th className="p-3 pl-6 font-medium text-slate-500">성명</th>
+                                    <th className="p-3 font-medium text-slate-500">영업소</th>
+                                    <th className="p-3 font-medium text-slate-500">서류명</th>
+                                    <th className="p-3 font-medium text-slate-500">사유</th>
+                                    <th className="p-3 text-center font-medium text-slate-500">서류 보기</th>
+                                    <th className="p-3 pr-6 text-center font-medium text-slate-500">심사</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {hqReviewDocs.length === 0 ? (
                                     <tr>
-                                        <th className="p-3 pl-6 font-medium text-slate-500">성명</th>
-                                        <th className="p-3 font-medium text-slate-500">영업소</th>
-                                        <th className="p-3 font-medium text-slate-500">서류명</th>
-                                        <th className="p-3 font-medium text-slate-500">영업소장 반려 사유</th>
-                                        <th className="p-3 text-center font-medium text-slate-500">서류 보기</th>
-                                        <th className="p-3 pr-6 text-center font-medium text-slate-500">심사</th>
+                                        <td colSpan={6} className="p-8 text-center text-slate-400 font-medium bg-white">
+                                            대기 중인 본사 2차 심사 서류가 없습니다. (영업소장 AI반려 직행 / 권역장·영업소장 이관 건)
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                    {hqReviewDocs.map((doc, i) => (
+                                ) : (
+                                    hqReviewDocs.map((doc, i) => (
                                         <tr key={doc.id || i} className="bg-white hover:bg-purple-50/30">
-                                            <td className="p-3 pl-6 font-bold">{doc.userName}</td>
+                                            <td className="p-3 pl-6 font-bold">
+                                                {doc.userName}
+                                                <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${doc.userRole === "manager" ? "bg-blue-100 text-blue-600" : "bg-emerald-100 text-emerald-600"}`}>
+                                                    {doc.userRole === "manager" ? "영업소장" : "기사"}
+                                                </span>
+                                            </td>
                                             <td className="p-3 text-slate-600 text-xs">{doc.userSubRegion}</td>
                                             <td className="p-3 text-purple-600 font-medium">{doc.title}</td>
-                                            <td className="p-3 text-xs text-red-500">{(doc as any).managerRejectionReason || "-"}</td>
+                                            <td className="p-3 text-xs text-red-500">
+                                                {(doc as any).managerRejectionReason
+                                                    ? `영업소장 반려: ${(doc as any).managerRejectionReason}`
+                                                    : (doc.verificationResult?.rejection_reasons?.[0]
+                                                        ? `AI 판독: ${doc.verificationResult.rejection_reasons[0]}`
+                                                        : "AI 판독 부적격")}
+                                            </td>
                                             <td className="p-3 text-center">
                                                 {doc.fileUrl && (
                                                     <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
@@ -519,12 +536,12 @@ export default function AdminDashboard() {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </CardContent>
-                    </Card>
-                )}
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </CardContent>
+                </Card>
 
                 {/* 본사 2차 심사 모달 */}
                 {hqReviewModalDoc && (
@@ -539,7 +556,12 @@ export default function AdminDashboard() {
                                     {hqReviewModalDoc.userName} · {hqReviewModalDoc.userSubRegion} · {hqReviewModalDoc.title}
                                 </p>
                                 <div className="mt-2 text-xs bg-red-50 text-red-600 rounded px-2 py-1">
-                                    영업소장 반려 사유: {(hqReviewModalDoc as any).managerRejectionReason || "-"}
+                                    {(hqReviewModalDoc as any).managerRejectionReason
+                                        ? `영업소장 반려 사유: ${(hqReviewModalDoc as any).managerRejectionReason}`
+                                        : (hqReviewModalDoc.verificationResult?.rejection_reasons?.[0]
+                                            ? `AI 판독 사유: ${hqReviewModalDoc.verificationResult.rejection_reasons[0]}`
+                                            : "AI OCR 판독 부적격 (영업소장 서류 직행)")
+                                    }
                                 </div>
                             </div>
                             <div className="p-6 bg-slate-50 space-y-4">
@@ -612,32 +634,38 @@ export default function AdminDashboard() {
                 )}
 
                 {/* ========== 수동 심사 대기열 ========== */}
-                {pendingDocs.length > 0 && (
-                    <Card className="shadow-lg border-0 border-l-4 border-l-yellow-400">
-                        <CardHeader className="pb-3 border-b bg-yellow-50/50">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                                <Eye className="h-5 w-5 text-yellow-500" />
-                                수동 심사 대기열
-                                <span className="bg-yellow-400 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                                    {pendingDocs.length}건
-                                </span>
-                                <span className="text-xs font-normal text-slate-400 ml-1">AI OCR 부적격 판정 → 관리자 최종 확인 필요</span>
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0 overflow-hidden">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 border-b">
+                <Card className="shadow-lg border-0 border-l-4 border-l-yellow-400">
+                    <CardHeader className="pb-3 border-b bg-yellow-50/50">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Eye className="h-5 w-5 text-yellow-500" />
+                            수동 심사 대기열
+                            <span className="bg-yellow-400 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                                {pendingDocs.length}건
+                            </span>
+                            <span className="text-xs font-normal text-slate-400 ml-1">AI OCR 부적격 판정 서류 수동 심사 대기열</span>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 border-b">
+                                <tr>
+                                    <th className="p-3 pl-6 font-medium text-slate-500">성명</th>
+                                    <th className="p-3 font-medium text-slate-500">영업소</th>
+                                    <th className="p-3 font-medium text-slate-500">서류명</th>
+                                    <th className="p-3 font-medium text-slate-500">업로드 시간</th>
+                                    <th className="p-3 text-center font-medium text-slate-500">서류 보기</th>
+                                    <th className="p-3 pr-6 text-center font-medium text-slate-500">심사</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {pendingDocs.length === 0 ? (
                                     <tr>
-                                        <th className="p-3 pl-6 font-medium text-slate-500">성명</th>
-                                        <th className="p-3 font-medium text-slate-500">영업소</th>
-                                        <th className="p-3 font-medium text-slate-500">서류명</th>
-                                        <th className="p-3 font-medium text-slate-500">업로드 시간</th>
-                                        <th className="p-3 text-center font-medium text-slate-500">서류 보기</th>
-                                        <th className="p-3 pr-6 text-center font-medium text-slate-500">심사</th>
+                                        <td colSpan={6} className="p-8 text-center text-slate-400 font-medium bg-white">
+                                            대기 중인 수동 심사 서류가 없습니다. (AI 부적격 판정 건)
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                    {pendingDocs.map((doc, i) => (
+                                ) : (
+                                    pendingDocs.map((doc, i) => (
                                         <tr key={doc.id || i} className="bg-white hover:bg-yellow-50/30">
                                             <td className="p-3 pl-6 font-bold">{doc.userName}</td>
                                             <td className="p-3 text-slate-600 text-xs">{doc.userSubRegion}</td>
@@ -673,12 +701,12 @@ export default function AdminDashboard() {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </CardContent>
-                    </Card>
-                )}
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </CardContent>
+                </Card>
 
                 {/* 수동 심사 모달 (이미지 확대 + 승인/반려) */}
                 {reviewModalDoc && (

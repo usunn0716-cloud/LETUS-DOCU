@@ -24,6 +24,7 @@ interface BulkFile {
     result?: any;
     itemId?: string;
     error?: string;
+    normalizedDocType?: string;
 }
 
 interface BulkUploadZoneProps {
@@ -32,8 +33,22 @@ interface BulkUploadZoneProps {
     userPhone: string;
     region: string;
     subRegion: string;
+    userBirthday: string;
     role: "manager" | "driver";
     onComplete: () => void;
+    onOcrComplete?: (results: {
+        fileId: string;
+        fileName: string;
+        docType: string;
+        overallResult: string;
+        extractedData: Record<string, string>;
+        extractionStatus?: Record<string, "success" | "failed">;
+        rejectionReasons: string[];
+        fileUrl: string;
+        itemId: string;
+        isDocumentRejected?: boolean;
+        hasExtractionFailed?: boolean;
+    }[]) => void;
 }
 
 // 서류명 -> ItemId 매핑 (manager/driver 구분)
@@ -44,8 +59,8 @@ const ITEM_MAP: Record<string, { manager: string; driver: string }> = {
     "위수탁계약서": { manager: "m2", driver: "c1" },
     "위·수탁 계약서": { manager: "m2", driver: "c1" },
     "위수탁 계약서": { manager: "m2", driver: "c1" },
-    "부속합의서": { manager: "m2", driver: "c1" },
-    "합의서": { manager: "m2", driver: "c1" },
+    "부속합의서": { manager: "m2b", driver: "c1b" },
+    "합의서": { manager: "m2b", driver: "c1b" },
     "사무실 임대(전대)차계약서": { manager: "m3", driver: "" },
     "임대차계약서": { manager: "m3", driver: "" },
     "전대차계약서": { manager: "m3", driver: "" },
@@ -77,7 +92,7 @@ const ITEM_MAP: Record<string, { manager: string; driver: string }> = {
 };
 
 export default function BulkUploadZone({
-    userId, userName, userPhone, region, subRegion, role, onComplete
+    userId, userName, userPhone, region, subRegion, userBirthday, role, onComplete, onOcrComplete
 }: BulkUploadZoneProps) {
     const [files, setFiles] = useState<BulkFile[]>([]);
     const [isDragging, setIsDragging] = useState(false);
@@ -157,6 +172,9 @@ export default function BulkUploadZone({
                         userName,
                         userPhone,
                         userSubRegion: subRegion,
+                        userBirthday,
+                        role,
+                        userRegion: region,
                     }),
                 });
                 const aiResult = await response.json();
@@ -166,7 +184,22 @@ export default function BulkUploadZone({
                 }
 
                 // ITEM_MAP으로 역할에 맞는 itemId 매핑
-                const docType = aiResult.document_type;
+                const rawDocType = aiResult.document_type || "";
+                const stripped = rawDocType.replace(/\s+/g, "").replace(/·/g, "");
+                const docType = stripped.includes("자동차등록증") ? "자동차등록증"
+                    : stripped.includes("운전면허증") ? "운전면허증"
+                    : (stripped.includes("화물운송") && stripped.includes("자격")) ? "화물운송종사 자격증"
+                    : stripped.includes("부속합의") ? "부속합의서"
+                    : (stripped.includes("위수탁") && stripped.includes("계약")) ? "위수탁계약서"
+                    : stripped.includes("사업자등록") ? "사업자등록증"
+                    : (stripped.includes("임대차") || stripped.includes("전대차계약")) ? "임대차계약서"
+                    : (stripped.includes("전대차") && stripped.includes("동의")) ? "사무실 전대차 동의서"
+                    : (stripped.includes("등기부") || stripped.includes("등기사항")) ? "영업소 등기부등본"
+                    : (stripped.includes("산재보험") || stripped.includes("보험가입증명")) ? "산재보험가입증명원"
+                    : (stripped.includes("안전교육") || stripped.includes("교육실시")) ? "안전교육 이수증"
+                    : (stripped.includes("화물운송") && stripped.includes("허가")) ? "화물운송 허가증"
+                    : (stripped.includes("택배기사") && stripped.includes("명부")) ? "택배기사 명부"
+                    : rawDocType;
                 const mapping = ITEM_MAP[docType];
                 const itemId = role === "manager" ? mapping?.manager : mapping?.driver;
 
@@ -179,7 +212,8 @@ export default function BulkUploadZone({
                     continue;
                 }
 
-                updateFileStatus(f.id, "classified", { result: aiResult, itemId });
+                console.log(`[BulkUpload] 분류 완료: docType="${docType}" → itemId="${itemId}" (role=${role})`);
+                updateFileStatus(f.id, "classified", { result: aiResult, itemId, normalizedDocType: docType });
             } catch (err: any) {
                 updateFileStatus(f.id, "error", { error: err.message || "분류 실패" });
             }
@@ -194,6 +228,8 @@ export default function BulkUploadZone({
         const classifiedFiles = files.filter(f => f.status === "classified" && f.itemId);
         if (classifiedFiles.length === 0) return;
 
+        const fileUrlMap = new Map<string, string>();
+
         for (const f of classifiedFiles) {
             updateFileStatus(f.id, "saving");
             try {
@@ -202,14 +238,17 @@ export default function BulkUploadZone({
                     f.file,
                     subRegion,
                     userName,
-                    f.result.document_type
+                    f.normalizedDocType || f.result.document_type
                 );
+                fileUrlMap.set(f.id, fileUrl);
 
                 const isRejected = f.result?.overall_result === "반려";
+                // 역할별 분기: 영업소장 AI반려 → 본사 직행(hq_review) / 택배기사 AI반려 → 영업소장 1차 심사(pending)
+                const rejectedStatus = (role === "manager" ? "hq_review" : "pending") as "hq_review" | "pending";
 
-                // 2) Firestore 저장 (반려 서류는 pending으로 저장하여 관리자 수동 심사 대기)
-                const isSecondFile = f.result.document_type === "부속합의서";
-                await submitDocument({
+                // 2) Firestore 저장 (반려 서류는 역할에 따라 다르게 저장)
+                console.log(`[BulkUpload] Firestore 저장 시작: userId="${userId}", itemId="${f.itemId}", title="${f.normalizedDocType || f.result.document_type}", status="${isRejected ? rejectedStatus : 'submitted'}"`);
+                const savedDocId = await submitDocument({
                     userId,
                     userName,
                     userPhone,
@@ -217,22 +256,58 @@ export default function BulkUploadZone({
                     userSubRegion: subRegion,
                     userRole: role,
                     itemId: f.itemId!,
-                    title: f.result.document_type,
+                    title: f.normalizedDocType || f.result.document_type,
                     fileUrl,
                     fileName: f.file.name,
                     verificationResult: f.result,
-                    ...(isSecondFile ? {
-                        fileUrl2: fileUrl,
-                        fileName2: f.file.name,
-                        verificationResult2: f.result,
-                    } : {}),
-                }, isRejected ? "pending" : "submitted");
+                }, isRejected ? rejectedStatus : "submitted");
+                console.log(`[BulkUpload] Firestore 저장 완료: docId="${savedDocId}"`);
+
+                // 3) 구글 시트에 서류 링크 기록 (개별 업로드와 동일하게)
+                fetch("/api/construction-sheet", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        action: "updateDocumentLinks",
+                        name: userName,
+                        birthday: userBirthday,
+                        phone: userPhone,
+                        docType: f.normalizedDocType || f.result.document_type,
+                        fileUrl,
+                        center: region,
+                        subRegion,
+                        role,
+                    }),
+                }).catch(e => console.error(`[BulkUpload] 서류 링크 시트 기록 실패 (${f.result.document_type}):`, e));
 
                 updateFileStatus(f.id, "done");
             } catch (err: any) {
                 updateFileStatus(f.id, "error", { error: "저장 실패: " + (err.message || "") });
             }
         }
+
+        if (onOcrComplete) {
+            const results = classifiedFiles.map(f => {
+                const isDocumentRejected = f.result?.overall_result === "반려";
+                const hasExtractionFailed = f.result?.extraction_status && Object.values(f.result.extraction_status).includes("failed");
+
+                return {
+                    fileId: f.id,
+                    fileName: f.file.name,
+                    docType: f.result?.document_type || "",
+                    overallResult: f.result?.overall_result || "",
+                    extractedData: f.result?.extracted_data || {},
+                    extractionStatus: f.result?.extraction_status || {},
+                    rejectionReasons: f.result?.rejection_reasons || [],
+                    fileUrl: fileUrlMap.get(f.id) || "",
+                    itemId: f.itemId || "",
+                    isDocumentRejected,
+                    hasExtractionFailed
+                };
+            });
+            onOcrComplete(results);
+        }
+
         onComplete();
     };
 
@@ -289,8 +364,8 @@ export default function BulkUploadZone({
                             <h3 className="font-bold flex items-center gap-2 text-slate-700">
                                 <FileText className="h-4 w-4 text-letus-orange" />
                                 업로드 파일 ({files.length}개)
-                                {validCount > 0 && <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">적합 {validCount}</span>}
-                                {rejectedCount > 0 && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">반려 {rejectedCount}</span>}
+                                {validCount > 0 && <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-bold">적합 {validCount}</span>}
+                                {rejectedCount > 0 && <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold">심사대기 {rejectedCount}</span>}
                             </h3>
                             <div className="flex gap-2">
                                 <Button variant="ghost" size="sm" onClick={() => setFiles([])} disabled={isProcessing} className="text-slate-400 hover:text-red-500">
@@ -308,7 +383,7 @@ export default function BulkUploadZone({
                             {files.map(f => (
                                 <div key={f.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${f.status === "done" ? "bg-green-50 border-green-200" :
                                     f.status === "error" ? "bg-red-50 border-red-200" :
-                                        f.status === "classified" && f.result?.overall_result === "반려" ? "bg-red-50/50 border-red-100" :
+                                        f.status === "classified" && f.result?.overall_result === "반려" ? "bg-amber-50/50 border-amber-100" :
                                             "bg-white border-slate-100 hover:border-slate-200"
                                     }`}>
                                     {/* 미리보기 */}
@@ -322,9 +397,9 @@ export default function BulkUploadZone({
                                             <span className="text-sm font-bold truncate text-slate-700">{f.file.name}</span>
                                             {f.status === "scanning" && <Loader2 className="h-3 w-3 animate-spin text-letus-orange flex-shrink-0" />}
                                             {f.status === "classified" && (
-                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${f.result.overall_result === "적합" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${f.result.overall_result === "적합" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
                                                     }`}>
-                                                    {f.result.document_type} · {f.result.overall_result}
+                                                    {f.result.document_type} · 심사대기
                                                 </span>
                                             )}
                                             {f.status === "done" && (
@@ -339,7 +414,7 @@ export default function BulkUploadZone({
                                             {f.status === "saving" && <span className="text-blue-500">Firebase에 저장 중...</span>}
                                             {f.status === "error" && <span className="text-red-500 font-medium">⚠️ {f.error}</span>}
                                             {f.status === "classified" && f.result?.overall_result === "반려" && (
-                                                <span className="text-red-400">이 서류는 다시 확인해 주세요: {f.result.rejection_reasons?.[0]}</span>
+                                                <span className="text-amber-600">심사 대기 상태로 등록됩니다: {f.result.rejection_reasons?.[0]}</span>
                                             )}
                                             {f.status === "classified" && f.result?.overall_result === "적합" && (
                                                 <span className="text-green-600">→ <b>{f.result.document_type}</b> 칸에 자동 배치됩니다</span>
@@ -394,11 +469,11 @@ export default function BulkUploadZone({
                             )}
                         </div>
 
-                        {/* 반려 안내 */}
+                        {/* 심사대기 안내 */}
                         {rejectedCount > 0 && (
-                            <p className="text-xs text-center text-yellow-600 font-medium flex items-center justify-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                반려된 서류 {rejectedCount}건은 관리자 확인을 위해 접수됩니다. (수동 심사 대기)
+                            <p className="text-xs text-center text-amber-600 font-medium flex items-center justify-center gap-1">
+                                <AlertCircle className="h-3 w-3 text-amber-600" />
+                                심사대기 서류 {rejectedCount}건은 매니저/관리자 대시보드의 수동 심사 대기열로 즉시 이관됩니다.
                             </p>
                         )}
                     </div>

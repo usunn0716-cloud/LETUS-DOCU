@@ -21,8 +21,10 @@ export async function uploadDocumentFile(
         ? file.name.substring(file.name.lastIndexOf("."))
         : "";
 
-    // 최종 경로: 영업소/이름/서류명.확장자  (한글, 괄호, 숫자 등 그대로 유지)
-    const filePath = `${subRegion}/${userName}/${docTitle}${ext}`;
+    // 날짜 기반 폴더링: 영업소/이름/YYYYMMDD/서류명.확장자
+    const now = new Date();
+    const dateFolder = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const filePath = `${subRegion}/${userName}/${dateFolder}/${docTitle}${ext}`;
     console.log("[Storage] 업로드 경로:", filePath);
 
     try {

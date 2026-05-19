@@ -20,6 +20,20 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ message: `'${name}' 사용자의 서류를 찾을 수 없습니다.` });
         }
 
+        // 사용자 정보 조회 (Google Sheets 삭제를 위한 고유키 파라미터 획득)
+        const userQ = query(collection(db, "users"), where("name", "==", name));
+        const userSnap = await getDocs(userQ);
+        let userPhone = "";
+        let subRegion = "";
+        let birthday = "";
+        if (!userSnap.empty) {
+            const userData = userSnap.docs[0].data();
+            userPhone = userData.phone || "";
+            subRegion = userData.subRegion || "";
+            birthday = userData.birthday || "";
+        }
+
+        const { getSheetNameByItemId, deleteSheetRow } = await import("@/lib/google-sheets");
         const results: { id: string; title: string; deleted: string[] }[] = [];
 
         for (const docSnap of snapshot.docs) {
@@ -55,6 +69,14 @@ export async function GET(req: NextRequest) {
             });
 
             results.push({ id: docSnap.id, title: data.title, deleted: deletedUrls });
+
+            // Google Sheets 해당 행 삭제
+            if (data.itemId) {
+                const sheetName = getSheetNameByItemId(data.itemId);
+                if (sheetName) {
+                    await deleteSheetRow(sheetName, name, userPhone, subRegion, birthday);
+                }
+            }
         }
 
         return NextResponse.json({

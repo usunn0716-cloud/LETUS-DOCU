@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { itemId, userName, userPhone } = await req.json();
+        const { itemId, userName, userPhone, subRegion, birthday } = await req.json();
 
-        if (!itemId || !userName || !userPhone) {
+        if (!itemId || !userName || !userPhone || !subRegion) {
             return NextResponse.json(
-                { error: "itemId, userName, userPhone are required" },
+                { error: "itemId, userName, userPhone, subRegion are required" },
                 { status: 400 }
             );
         }
@@ -19,7 +19,29 @@ export async function POST(req: Request) {
             return NextResponse.json({ skipped: true, message: "해당 서류는 스프레드시트 기록 대상이 아닙니다." });
         }
 
-        await deleteSheetRow(sheetName, userName, userPhone);
+        let finalBirthday = birthday;
+        let finalSubRegion = subRegion;
+
+        if (!finalBirthday || !finalSubRegion) {
+            const { collection, getDocs, query, where } = await import("firebase/firestore");
+            const { db } = await import("@/lib/firebase");
+            const userQ = query(collection(db, "users"), where("name", "==", userName), where("phone", "==", userPhone));
+            const userSnap = await getDocs(userQ);
+            if (!userSnap.empty) {
+                const userData = userSnap.docs[0].data();
+                if (!finalBirthday) finalBirthday = userData.birthday || "";
+                if (!finalSubRegion) finalSubRegion = userData.subRegion || "";
+            }
+        }
+
+        if (!finalSubRegion) {
+             return NextResponse.json(
+                { error: "subRegion is required" },
+                { status: 400 }
+            );
+        }
+
+        await deleteSheetRow(sheetName, userName, userPhone, finalSubRegion, finalBirthday);
 
         return NextResponse.json({ success: true, sheetName });
     } catch (error: any) {

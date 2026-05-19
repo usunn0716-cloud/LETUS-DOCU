@@ -40,6 +40,7 @@ function ManagerDashboardContent() {
     const name = searchParams.get("name") || "영업소장";
     const region = searchParams.get("region") || "양지센터";
     const subRegion = searchParams.get("subRegion") || "영업소";
+    const birthday = searchParams.get("birthday") || "";
 
     const [activeTab, setActiveTab] = useState<"my" | "drivers">("my");
     const [documents, setDocuments] = useState<FirestoreDocument[]>([]);
@@ -122,6 +123,17 @@ function ManagerDashboardContent() {
         fetchData();
     }, [userId, subRegion]);
 
+    // URL 파라미터(activeTab) 감지 및 리다이렉트 처리 추가
+    useEffect(() => {
+        const tab = searchParams.get("activeTab");
+        if (tab === "drivers") {
+            setActiveTab("drivers");
+        } else {
+            const params = new URLSearchParams(window.location.search);
+            router.replace(`/dashboard/unified?${params.toString()}`);
+        }
+    }, [searchParams]);
+
     // localStorage에서 등록기사/서류수 복원
     useEffect(() => {
         const saved = localStorage.getItem(`driverCounts_${subRegion}`);
@@ -137,7 +149,7 @@ function ManagerDashboardContent() {
         const doc = documents.find(d => d.itemId === item.id);
         const docStatus = !doc ? "pending"
             : (doc.status === "submitted" || doc.status === "approved") ? "completed"
-                : (doc.status === "pending" && doc.fileUrl) ? "reviewing"
+                : ((doc.status === "pending" || doc.status === "hq_review") && doc.fileUrl) ? "reviewing"
                     : doc.status === "rejected" ? "rejected"
                         : "pending";
         return { ...item, status: docStatus, rejectionReason: doc?.rejectionReason };
@@ -352,7 +364,10 @@ function ManagerDashboardContent() {
                 {/* Tab Switcher */}
                 <div className="bg-white rounded-xl shadow-lg mb-4 p-1 flex">
                     <button
-                        onClick={() => setActiveTab("my")}
+                        onClick={() => {
+                            const params = new URLSearchParams(window.location.search);
+                            router.push(`/dashboard/unified?${params.toString()}`);
+                        }}
                         className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${activeTab === "my"
                             ? "bg-letus-orange text-white shadow-md"
                             : "text-slate-500 hover:text-slate-700"
@@ -439,6 +454,7 @@ function ManagerDashboardContent() {
                                 userId={userId!}
                                 userName={name}
                                 userPhone={searchParams.get("phone") || ""}
+                                userBirthday={birthday}
                                 region={region}
                                 subRegion={subRegion}
                                 role="manager"

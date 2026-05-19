@@ -19,16 +19,16 @@ const sheets = google.sheets({ version: 'v4', auth });
  */
 const SHEET_CONFIG: Record<string, string[]> = {
     '운전면허증': [
-        '제출일시', '영업소', '이름', '전화번호', 'OCR_이름', '생년월일', '거주지주소', '운전면허종류', '운전면허번호', '판정결과'
+        '제출일시', '영업소', '이름', '전화번호', 'OCR_이름', '생년월일', '거주지주소', '운전면허종류', '운전면허번호', '판정결과', '데이터소스', '원본파일링크', '고유키'
     ],
     '위수탁계약서': [
-        '제출일시', '영업소', '이름', '전화번호', '연락처', '이메일', '경력', '판정결과'
+        '제출일시', '영업소', '이름', '전화번호', '연락처', '이메일', '경력', '판정결과', '데이터소스', '원본파일링크', '고유키'
     ],
     '자동차등록증': [
-        '제출일시', '영업소', '이름', '전화번호', '차량종류', '차량명', '차량번호', '연식', '연료종류', '번호판종류(용도)', '적재함형태/적재량', '이산화탄소배출량', '판정결과'
+        '제출일시', '영업소', '이름', '전화번호', '차량종류', '차량명', '차량번호', '연식', '연료종류', '번호판종류(용도)', '적재함형태/적재량', '이산화탄소배출량', '판정결과', '데이터소스', '원본파일링크', '고유키'
     ],
     '화물운송종사 자격증': [
-        '제출일시', '영업소', '이름', '전화번호', '화물운송종사자격증번호', '종사자격증취득일', '판정결과'
+        '제출일시', '영업소', '이름', '전화번호', '화물운송종사자격증번호', '종사자격증취득일', '판정결과', '데이터소스', '원본파일링크', '고유키'
     ]
 };
 
@@ -74,27 +74,28 @@ async function ensureHeaders(sheetName: string): Promise<void> {
 }
 
 /**
- * 기존 시트에서 동일 인물(이름+전화번호) 행 번호 찾기
- * - 모든 시트: 이름(C열) + 전화번호(D열) 기준 (로그인 정보 사용)
+ * 기존 시트에서 동일 인물(고유키) 행 번호 찾기
  * - 1행(헤더)은 건너뜀
  * @returns 찾은 행 번호 (1-indexed, 시트 기준) 또는 -1
  */
-async function findExistingRow(sheetName: string, userName: string, userPhone: string): Promise<number> {
+async function findExistingRow(sheetName: string, uniqueKey: string): Promise<number> {
     try {
+        const headers = SHEET_CONFIG[sheetName];
+        if (!headers) return -1;
+        
+        const endCol = String.fromCharCode(64 + headers.length);
         const res = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID!,
-            range: `${sheetName}!A:D`,
+            range: `${sheetName}!A:${endCol}`,
         });
         const rows = res.data.values;
-        if (!rows || rows.length <= 1) return -1; // 헤더만 있거나 비어있으면 -1
+        if (!rows || rows.length <= 1) return -1;
 
-        // i=1부터 시작 (0번째는 헤더 행)
+        const uniqueKeyColIdx = headers.length - 1;
+
         for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            const rowName = (row[2] || '').toString().trim();  // C열 = 이름
-            const rowPhone = (row[3] || '').toString().trim(); // D열 = 전화번호
-
-            if (rowName === userName.trim() && rowPhone === userPhone.trim()) {
+            const rowKey = (rows[i][uniqueKeyColIdx] || '').toString().trim();
+            if (rowKey === uniqueKey.trim()) {
                 return i + 1; // 1-indexed
             }
         }
@@ -107,10 +108,10 @@ async function findExistingRow(sheetName: string, userName: string, userPhone: s
 /**
  * 특정 시트에 데이터 추가 또는 덮어쓰기
  * - 1행에 헤더가 없으면 자동 생성
- * - 동일 인물이 이미 있으면 해당 행을 최신 데이터로 덮어쓰기
+ * - 고유키가 동일한 행이 있으면 최신 데이터로 덮어쓰기
  * - 없으면 새 행 추가
  */
-export async function appendExtractedData(sheetName: string, rowData: any[]) {
+export async function appendExtractedData(sheetName: string, rowData: any[], fileUrl?: string, dataSource?: string, userBirthday?: string) {
     if (!SPREADSHEET_ID || !(sheetName in SHEET_CONFIG)) return;
 
     try {
@@ -118,25 +119,33 @@ export async function appendExtractedData(sheetName: string, rowData: any[]) {
         await ensureHeaders(sheetName);
 
         const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-        const values = [[now, ...rowData]];
-
+        
         // rowData[0] = 영업소, rowData[1] = 이름(로그인), rowData[2] = 전화번호(로그인)
+        const subRegion = rowData[0] || '';
         const userName = rowData[1] || '';
         const userPhone = rowData[2] || '';
+        const birthday = userBirthday || '생년월일미상';
+        
+        // 고유키 생성: 이름-전화번호-영업소-생년월일-서류명
+        const uniqueKey = `${userName}-${userPhone}-${subRegion}-${birthday}-${sheetName}`;
 
-        const existingRow = await findExistingRow(sheetName, userName, userPhone);
+        // 데이터소스 + 원본파일링크 + 고유키 추가
+        const finalRow = [...rowData, dataSource || 'OCR', fileUrl || '', uniqueKey];
+        const values = [[now, ...finalRow]];
+
+        const existingRow = await findExistingRow(sheetName, uniqueKey);
 
         if (existingRow > 0) {
-            // 기존 행 덮어쓰기 (동일 이름+전화번호 → 최신 데이터로 갱신)
+            // 기존 행 덮어쓰기
             const headers = SHEET_CONFIG[sheetName];
-            const endCol = String.fromCharCode(64 + headers.length); // A=65
+            const endCol = String.fromCharCode(64 + headers.length);
             await sheets.spreadsheets.values.update({
                 spreadsheetId: SPREADSHEET_ID,
                 range: `${sheetName}!A${existingRow}:${endCol}${existingRow}`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: { values },
             });
-            console.log(`[Google Sheets] Updated existing row ${existingRow} in "${sheetName}" for ${userName} (${userPhone})`);
+            console.log(`[Google Sheets] Updated existing row ${existingRow} in "${sheetName}" for ${uniqueKey}`);
         } else {
             // 새 행 추가
             await sheets.spreadsheets.values.append({
@@ -145,7 +154,7 @@ export async function appendExtractedData(sheetName: string, rowData: any[]) {
                 valueInputOption: 'USER_ENTERED',
                 requestBody: { values },
             });
-            console.log(`[Google Sheets] Appended new row to "${sheetName}" for ${userName} (${userPhone})`);
+            console.log(`[Google Sheets] Appended new row to "${sheetName}" for ${uniqueKey}`);
         }
     } catch (error) {
         console.error(`[Google Sheets] Error writing to "${sheetName}":`, error);
@@ -200,23 +209,22 @@ export function getSheetNameByItemId(itemId: string): string | null {
 
 /**
  * 서류 취소 시 해당 시트에서 행 삭제 (플랫폼-스프레드시트 동기화)
- * - 이름(C열) + 전화번호(D열) 기준으로 행을 찾아 물리적으로 삭제
- * - 빈 행이 남지 않고 완전히 제거됨
+ * - 고유키 기준으로 행을 찾아 물리적으로 삭제
  */
-export async function deleteSheetRow(sheetName: string, userName: string, userPhone: string): Promise<void> {
-    if (!SPREADSHEET_ID || !userName || !userPhone) return;
-    // SHEET_CONFIG에 없는 시트는 삭제 대상 아님
+export async function deleteSheetRow(sheetName: string, userName: string, userPhone: string, subRegion: string, userBirthday: string): Promise<void> {
+    if (!SPREADSHEET_ID || !userName || !userPhone || !subRegion) return;
     if (!(sheetName in SHEET_CONFIG)) return;
 
     try {
-        // 1. 행 찾기
-        const rowIndex = await findExistingRow(sheetName, userName, userPhone);
+        const birthday = userBirthday || '생년월일미상';
+        const uniqueKey = `${userName}-${userPhone}-${subRegion}-${birthday}-${sheetName}`;
+
+        const rowIndex = await findExistingRow(sheetName, uniqueKey);
         if (rowIndex <= 1) {
-            console.log(`[Google Sheets] "${sheetName}"에서 ${userName}(${userPhone}) 행을 찾지 못함 — 삭제 생략`);
+            console.log(`[Google Sheets] "${sheetName}"에서 ${uniqueKey} 행을 찾지 못함 — 삭제 생략`);
             return;
         }
 
-        // 2. 시트의 sheetId 가져오기 (행 삭제 API에 필요)
         const spreadsheet = await sheets.spreadsheets.get({
             spreadsheetId: SPREADSHEET_ID,
             fields: 'sheets.properties',
@@ -229,7 +237,6 @@ export async function deleteSheetRow(sheetName: string, userName: string, userPh
             return;
         }
 
-        // 3. 행 물리적 삭제 (빈 행 없이 완전 제거)
         await sheets.spreadsheets.batchUpdate({
             spreadsheetId: SPREADSHEET_ID,
             requestBody: {
@@ -246,8 +253,36 @@ export async function deleteSheetRow(sheetName: string, userName: string, userPh
             }
         });
 
-        console.log(`[Google Sheets] "${sheetName}" ${rowIndex}행 삭제 완료: ${userName}(${userPhone})`);
+        console.log(`[Google Sheets] "${sheetName}" ${rowIndex}행 삭제 완료: ${uniqueKey}`);
     } catch (error) {
         console.error(`[Google Sheets] "${sheetName}" 행 삭제 오류:`, error);
+    }
+}
+
+/**
+ * 모든 서류 시트의 데이터 일괄 삭제 (전체 초기화용)
+ * 헤더 행(1행)은 유지하고 A2부터 데이터만 지웁니다.
+ */
+export async function clearAllSheetData(): Promise<void> {
+    if (!SPREADSHEET_ID) return;
+
+    try {
+        const sheetNames = Object.keys(SHEET_CONFIG);
+        const ranges = sheetNames.map(sheetName => {
+            const headers = SHEET_CONFIG[sheetName];
+            const endCol = String.fromCharCode(64 + headers.length);
+            return `${sheetName}!A2:${endCol}`;
+        });
+
+        await sheets.spreadsheets.values.batchClear({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: {
+                ranges: ranges,
+            }
+        });
+
+        console.log(`[Google Sheets] 모든 서류 시트 데이터 일괄 초기화 완료 (헤더 유지)`);
+    } catch (error) {
+        console.error(`[Google Sheets] 시트 데이터 일괄 초기화 오류:`, error);
     }
 }

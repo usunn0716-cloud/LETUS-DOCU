@@ -142,7 +142,10 @@ export interface FirestoreDocument {
     managerRejectionReason?: string; // 영업소장 반려 사유
     verificationResult?: any; // Claude OCR 검증 결과 저장
     rejectionCount?: number;  // AI + 영업소장 + 본사 반려 누적 횟수
+    rejectionType?: "document" | "extraction"; // 반려 유형 (서류 반려 vs 개인정보 추출 실패)
     reviewStage?: "manager" | "hq"; // 현재 심사 단계
+    manualInputData?: Record<string, string>; // OCR Fallback 수동 입력 데이터
+    dataSource?: "OCR" | "수동입력" | "OCR+수동보완"; // 데이터 출처
 }
 
 /**
@@ -178,16 +181,30 @@ export async function submitDocument(data: {
     verificationResult2?: any;
     fileUrls?: string[];    // 다중 파일 (영업소 전경 사진 등)
     fileNames?: string[];
-}, statusOverride?: "submitted" | "pending" | "approved", rejectionCountIncrement?: number): Promise<string> {
+}, statusOverride?: "submitted" | "pending" | "approved" | "rejected" | "hq_review", rejectionCountIncrement?: number, rejectionType?: "document" | "extraction"): Promise<string> {
     const finalStatus = statusOverride || "submitted";
 
-    // 기존 제출 기록이 있는지 확인
-    const q = query(
+    console.log(`%c[submitDocument] 시작: userId="${data.userId}", itemId="${data.itemId}", title="${data.title}", status="${finalStatus}"`, 'color: blue; font-weight: bold');
+
+    // 기존 제출 기록이 있는지 확인 (1차: userId + itemId)
+    let snapshot = await getDocs(query(
         collection(db, "documents"),
         where("userId", "==", data.userId),
         where("itemId", "==", data.itemId)
-    );
-    const snapshot = await getDocs(q);
+    ));
+
+    console.log(`[submitDocument] 1차 검색(userId+itemId): ${snapshot.docs.length}건 발견`);
+
+    // 2차 폴백: 못 찾으면 이름+전화번호+itemId로 재검색
+    if (snapshot.empty) {
+        snapshot = await getDocs(query(
+            collection(db, "documents"),
+            where("userName", "==", data.userName),
+            where("userPhone", "==", data.userPhone),
+            where("itemId", "==", data.itemId)
+        ));
+        console.log(`[submitDocument] 2차 검색(이름+전화+itemId): ${snapshot.docs.length}건 발견`);
+    }
 
     if (!snapshot.empty) {
         // 기존 문서 업데이트 (재업로드)
@@ -195,7 +212,14 @@ export async function submitDocument(data: {
         const existingData = existingDoc.data();
         const currentRejectionCount = existingData.rejectionCount || 0;
         const updateData: any = {
+            userId: data.userId,
+            userName: data.userName,
+            userPhone: data.userPhone,
+            userRegion: data.userRegion,
+            userSubRegion: data.userSubRegion,
+            userRole: data.userRole,
             status: finalStatus,
+            title: data.title,
             fileUrl: data.fileUrl,
             fileName: data.fileName,
             submittedAt: serverTimestamp(),
@@ -203,6 +227,9 @@ export async function submitDocument(data: {
             verificationResult: data.verificationResult || null,
             rejectionCount: currentRejectionCount + (rejectionCountIncrement || 0),
         };
+        if (rejectionType) {
+            updateData.rejectionType = rejectionType;
+        }
         // 반려 횟수 증가 시 관련 메타 초기화
         if (rejectionCountIncrement && rejectionCountIncrement > 0) {
             updateData.managerRejectionReason = null;
@@ -211,6 +238,10 @@ export async function submitDocument(data: {
         // 최종 승인 시 심사 단계 초기화
         if (finalStatus === "approved") {
             updateData.reviewStage = null;
+        }
+        // AI 반려 → 본사 직행(영업소장 서류)인 경우 reviewStage 설정
+        if (finalStatus === "hq_review") {
+            updateData.reviewStage = "hq";
         }
         // 두 번째 파일이 있으면 함께 저장
         if (data.fileUrl2) {
@@ -224,6 +255,23 @@ export async function submitDocument(data: {
             updateData.fileNames = data.fileNames;
         }
         await updateDoc(doc(db, "documents", existingDoc.id), updateData);
+        console.log(`%c[submitDocument] ✅ 기존 문서 업데이트 완료: docId="${existingDoc.id}"`, 'color: green; font-weight: bold');
+
+        // ↓ 여기 추가: 중복 문서 정리 (최신 1건만 남기고 삭제)
+        if (snapshot.docs.length > 1) {
+            const sorted = [...snapshot.docs].sort((a, b) => {
+                const ta = a.data().submittedAt?.toDate?.()?.getTime?.() || 0;
+                const tb = b.data().submittedAt?.toDate?.()?.getTime?.() || 0;
+                return tb - ta;
+            });
+            // sorted[0]이 방금 업데이트한 최신본, 나머지 삭제
+            for (let i = 1; i < sorted.length; i++) {
+                if (sorted[i].id !== existingDoc.id) {
+                    await deleteDoc(doc(db, "documents", sorted[i].id));
+                }
+            }
+        }
+
         return existingDoc.id;
     }
 
@@ -233,7 +281,10 @@ export async function submitDocument(data: {
         status: finalStatus,
         submittedAt: serverTimestamp(),
         rejectionCount: rejectionCountIncrement || 0,
+        rejectionType: rejectionType || null,
+        ...(finalStatus === "hq_review" ? { reviewStage: "hq" } : {}),
     });
+    console.log(`%c[submitDocument] ✅ 새 문서 생성 완료: docId="${docRef.id}"`, 'color: green; font-weight: bold');
     return docRef.id;
 }
 

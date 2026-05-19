@@ -24,6 +24,7 @@ function DriverDashboardContent() {
     const userId = searchParams.get("userId");
     const name = searchParams.get("name") || "기사";
     const region = searchParams.get("region") || "센터";
+    const birthday = searchParams.get("birthday") || "";
 
     const [documents, setDocuments] = useState<FirestoreDocument[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -120,6 +121,7 @@ function DriverDashboardContent() {
                     userId={userId!}
                     userName={name}
                     userPhone={searchParams.get("phone") || ""}
+                    userBirthday={birthday}
                     region={region}
                     subRegion={searchParams.get("subRegion") || ""}
                     role="driver"

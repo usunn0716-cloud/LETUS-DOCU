@@ -6,6 +6,7 @@ import {
     Building2,
     ShieldCheck,
     ChevronRight,
+    Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +56,7 @@ const SUB_REGION_PIN: Record<string, string> = {
 
 export default function LandingPage() {
     const router = useRouter();
-    const [mode, setMode] = useState<"portal" | "admin" | null>(null);
+    const [mode, setMode] = useState<"portal" | "admin" | "region-admin" | null>(null);
     const [userType, setUserType] = useState<"manager" | "driver">("manager");
     const [name, setName] = useState("");
     const [phone, setPhone] = useState("");
@@ -64,7 +65,16 @@ export default function LandingPage() {
     const [selectedRegion, setSelectedRegion] = useState<string>("");
     const [selectedSubRegion, setSelectedSubRegion] = useState<string>("");
     const [adminPw, setAdminPw] = useState("");
+    const [regionAdminCenter, setRegionAdminCenter] = useState<string>("");
+    const [regionAdminSubRegion, setRegionAdminSubRegion] = useState<string>("");
+    const [regionAdminPw, setRegionAdminPw] = useState("");
     const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+    // 권역장 접속용 영업소 목록
+    const regionAdminSubRegions = useMemo(() => {
+        if (!regionAdminCenter) return [];
+        return REGIONAL_DATA.filter(d => d.region === regionAdminCenter).map(d => d.subRegion);
+    }, [regionAdminCenter]);
 
     const regions = useMemo(() => Array.from(new Set(REGIONAL_DATA.map(d => d.region))), []);
     const subRegions = useMemo(() => {
@@ -82,6 +92,36 @@ export default function LandingPage() {
                 return;
             }
             router.push("/dashboard/admin");
+            return;
+        }
+
+        if (mode === "region-admin") {
+            if (!regionAdminCenter || !regionAdminSubRegion) {
+                alert("센터와 영업소를 모두 선택해주세요.");
+                return;
+            }
+            if (regionAdminPw.length !== 4) {
+                alert("비밀번호 4자리를 입력해주세요.");
+                return;
+            }
+            setIsLoggingIn(true);
+            try {
+                const res = await fetch("/api/construction-sheet", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "verifyPassword", subRegion: regionAdminSubRegion, password: regionAdminPw }),
+                });
+                const result = await res.json();
+                if (result.valid) {
+                    router.push(`/dashboard/region-admin?center=${encodeURIComponent(regionAdminCenter)}&subRegion=${encodeURIComponent(regionAdminSubRegion)}`);
+                } else {
+                    alert("비밀번호가 일치하지 않습니다.\n권역장 전용 비밀번호를 확인해주세요.");
+                }
+            } catch {
+                alert("인증 중 오류가 발생했습니다.");
+            } finally {
+                setIsLoggingIn(false);
+            }
             return;
         }
 
@@ -118,16 +158,16 @@ export default function LandingPage() {
                 subRegion: selectedSubRegion,
             });
 
-            const dashboardPath = userType === "manager" ? "/dashboard/manager" : "/dashboard/driver";
             const params = new URLSearchParams({
                 userId: user.id!,
                 name: user.name,
                 phone: user.phone,
+                birthday: birthday,
                 region: user.region,
                 subRegion: user.subRegion,
                 role: user.role,
             });
-            router.push(`${dashboardPath}?${params.toString()}`);
+            router.push(`/dashboard/unified?${params.toString()}`);
         } catch (error) {
             console.error("로그인 실패:", error);
             alert("로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
@@ -167,44 +207,99 @@ export default function LandingPage() {
                                         </div>
                                         <div className="flex-1">
                                             <div className="font-bold text-lg text-letus-black">영업소 포털 접속</div>
-                                            <div className="text-xs text-slate-500 mt-0.5">영업소장 · 택배기사 통합 로그인</div>
+                                            <div className="text-xs text-slate-500 mt-0.5">영업소장 · 택배기사 · 시공팀 통합 로그인</div>
                                         </div>
                                         <ChevronRight className="h-5 w-5 text-letus-orange" />
                                     </div>
+
+
                                 </div>
                             )}
 
                             {/* Admin text link — 항상 보임 (모드 선택 전) */}
                             {!mode && (
-                                <div className="text-right">
+                                <div className="flex justify-end gap-3 text-right">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMode("region-admin")}
+                                        className="text-xs text-slate-400 hover:text-blue-500 hover:underline transition-colors"
+                                    >
+                                        시공팀 권역장 접속
+                                    </button>
+                                    <span className="text-xs text-slate-300">|</span>
                                     <button
                                         type="button"
                                         onClick={() => setMode("admin")}
-                                        className="text-xs text-slate-400 hover:underline transition-colors"
+                                        className="text-xs text-slate-400 hover:text-letus-orange hover:underline transition-colors"
                                     >
-                                        관리자 접속
+                                        LETUS 관리자 접속
                                     </button>
                                 </div>
                             )}
 
-                            {/* Admin mode */}
+                            {/* Admin mode - LETUS 관리자 */}
                             {mode === "admin" && (
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-sm font-bold text-letus-orange">🔒 관리자 모드</span>
+                                        <span className="text-sm font-bold text-letus-orange">🔒 LETUS 관리자 모드</span>
                                         <button type="button" onClick={() => setMode(null)} className="text-xs text-slate-400 hover:underline">
                                             ← 뒤로
                                         </button>
                                     </div>
                                     <div className="bg-slate-100 p-3 rounded-md text-sm text-slate-600">
                                         <span className="font-bold text-letus-orange">🔒 보안 접속</span><br />
-                                        담당자 전용 페이지입니다. 비밀번호를 입력하세요.
+                                        LETUS 관리자 전용 페이지입니다.
                                     </div>
                                     <Input
                                         type="password"
-                                        placeholder="비밀번호 입력"
+                                        placeholder="관리자 비밀번호 입력"
                                         value={adminPw}
                                         onChange={(e) => setAdminPw(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Region Admin mode - 권역장 */}
+                            {mode === "region-admin" && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-bold text-blue-500">🔒 권역장 전용 접속</span>
+                                        <button type="button" onClick={() => { setMode(null); setRegionAdminCenter(""); setRegionAdminSubRegion(""); setRegionAdminPw(""); }} className="text-xs text-slate-400 hover:underline">
+                                            ← 뒤로
+                                        </button>
+                                    </div>
+                                    <div className="bg-blue-50 p-3 rounded-md text-sm text-slate-600">
+                                        <span className="font-bold text-blue-500">🔒 권역장 전용 접속</span><br />
+                                        센터와 영업소를 선택하고 4자리 비밀번호를 입력하세요.
+                                    </div>
+                                    <select
+                                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                        value={regionAdminCenter}
+                                        onChange={(e) => { setRegionAdminCenter(e.target.value); setRegionAdminSubRegion(""); }}
+                                    >
+                                        <option value="">센터 선택</option>
+                                        {regions.map(r => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                        value={regionAdminSubRegion}
+                                        onChange={(e) => setRegionAdminSubRegion(e.target.value)}
+                                        disabled={!regionAdminCenter}
+                                    >
+                                        <option value="">영업소 선택</option>
+                                        {regionAdminSubRegions.map(r => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
+                                    <Input
+                                        type="password"
+                                        placeholder="권역장 비밀번호 4자리"
+                                        value={regionAdminPw}
+                                        onChange={(e) => setRegionAdminPw(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                        maxLength={4}
+                                        inputMode="numeric"
                                     />
                                 </div>
                             )}
@@ -323,10 +418,14 @@ export default function LandingPage() {
                             {mode && (
                                 <Button
                                     type="submit"
-                                    className="w-full h-12 text-base font-bold bg-letus-orange text-white hover:bg-letus-orange/90 shadow-lg shadow-letus-orange/20 transition-transform active:scale-95"
+                                    className={`w-full h-12 text-base font-bold text-white shadow-lg transition-transform active:scale-95 ${
+                                        mode === "region-admin" 
+                                        ? "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20" 
+                                        : "bg-letus-orange hover:bg-letus-orange/90 shadow-letus-orange/20"
+                                    }`}
                                     disabled={isLoggingIn}
                                 >
-                                    {isLoggingIn ? "접속 중..." : mode === "admin" ? "관리자 대시보드 입장" : "시작하기"}
+                                    {isLoggingIn ? "접속 중..." : mode === "admin" ? "LETUS 관리자 입장" : mode === "region-admin" ? "권역장 대시보드 입장" : "시작하기"}
                                     {!isLoggingIn && <ChevronRight className="ml-2 h-4 w-4" />}
                                 </Button>
                             )}
